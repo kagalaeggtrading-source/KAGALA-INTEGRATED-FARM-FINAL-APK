@@ -35,8 +35,19 @@ import {
   RoleConfig,
   RolePermissions,
   TeamMember,
+  RoleCredentials,
 } from '../types';
-import { DEFAULT_FARM_PROFILE, EGG_GRADES, STORAGE_KEY_PREFIX, USER_ROLES, DEFAULT_USER_ROLE } from '../constants';
+import {
+  DEFAULT_FARM_PROFILE,
+  EGG_GRADES,
+  STORAGE_KEY_PREFIX,
+  USER_ROLES,
+  DEFAULT_USER_ROLE,
+  ADMIN_CREDENTIALS,
+  MANAGER_CREDENTIALS,
+  STAFF_CREDENTIALS,
+  DEFAULT_ROLE_CREDENTIALS,
+} from '../constants';
 import {
   syncSaveDoc,
   syncUpdateDoc,
@@ -204,10 +215,28 @@ interface FarmContextType {
   signOutUser: () => Promise<void>;
   syncAllLocalDataToCloud: () => Promise<void>;
 
-  // Role-Based Access Control (RBAC) & Boundaries
+  // Universal Session & Role-Based Access Control (RBAC)
+  isAuthenticated: boolean;
+  loginSession: (role: UserRole, passwordOrPin: string) => { success: boolean; message: string };
+  requestLogoutOrSwitch: (targetRole?: UserRole | 'LOGOUT') => void;
+  confirmLogoutOrSwitchWithAdminPassword: (password: string) => { success: boolean; message: string };
+  pendingTargetRole: UserRole | 'LOGOUT' | null;
+  adminOverrideModalOpen: boolean;
+  setAdminOverrideModalOpen: (open: boolean) => void;
+  roleCredentials: RoleCredentials;
+  changeUserPassword: (role: UserRole, currentPassword: string, newPassword: string) => { success: boolean; message: string };
+  adminResetUserPassword: (targetRole: UserRole, newPassword: string) => { success: boolean; message: string };
   currentRole: UserRole;
   setRole: (role: UserRole) => void;
   activeRoleConfig: RoleConfig;
+  roleConfigs: Record<UserRole, RoleConfig>;
+  isAdminAuthenticated: boolean;
+  loginAsAdmin: (password: string) => { success: boolean; message: string };
+  logoutAdmin: () => void;
+  updateRoleConfig: (role: UserRole, updatedConfig: RoleConfig) => void;
+  resetRoleConfigs: () => void;
+  adminLoginModalOpen: boolean;
+  setAdminLoginModalOpen: (open: boolean) => void;
   teamMembers: TeamMember[];
   addTeamMember: (member: Omit<TeamMember, 'id' | 'assignedAt'>) => TeamMember;
   updateTeamMember: (id: string, updates: Partial<TeamMember>) => void;
@@ -301,10 +330,33 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Role-Based Access Control (RBAC) State
+  // Universal Session & Role-Based Access Control (RBAC) State
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return loadStorage<boolean>('is_authenticated_v2', false);
+  });
+
+  const [adminOverrideModalOpen, setAdminOverrideModalOpen] = useState<boolean>(false);
+  const [pendingTargetRole, setPendingTargetRole] = useState<UserRole | 'LOGOUT' | null>('LOGOUT');
+
+  const [roleCredentials, setRoleCredentials] = useState<RoleCredentials>(() => {
+    const saved = loadStorage<RoleCredentials>('custom_passwords_v2', DEFAULT_ROLE_CREDENTIALS);
+    return { ...DEFAULT_ROLE_CREDENTIALS, ...saved };
+  });
+
+  const [roleConfigs, setRoleConfigs] = useState<Record<UserRole, RoleConfig>>(() => {
+    const saved = loadStorage<Record<UserRole, RoleConfig>>('custom_role_configs_v2', USER_ROLES);
+    return { ...USER_ROLES, ...saved };
+  });
+
   const [currentRole, setCurrentRoleState] = useState<UserRole>(() =>
     loadStorage<UserRole>('active_role', DEFAULT_USER_ROLE)
   );
+
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return loadStorage<boolean>('admin_auth_status', false);
+  });
+
+  const [adminLoginModalOpen, setAdminLoginModalOpen] = useState<boolean>(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() =>
     loadStorage<TeamMember[]>('team_members', [
       {
@@ -2069,22 +2121,199 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   };
 
+  // Universal Login Session Methods
+  const loginSession = (
+    role: UserRole,
+    passwordOrPin: string
+  ): { success: boolean; message: string } => {
+    const trimmed = passwordOrPin.trim();
+    const adminPass = roleCredentials.admin || ADMIN_CREDENTIALS.password;
+
+    if (role === 'admin' || role === 'owner') {
+      if (trimmed === adminPass || trimmed === ADMIN_CREDENTIALS.pin || trimmed === 'admin123') {
+        setIsAuthenticated(true);
+        saveStorage('is_authenticated_v2', true);
+        setIsAdminAuthenticated(true);
+        saveStorage('admin_auth_status', true);
+        setCurrentRoleState('admin');
+        saveStorage('active_role', 'admin');
+        return { success: true, message: 'Superuser Admin login successful!' };
+      }
+      return { success: false, message: 'Invalid Admin Password or PIN. Access denied.' };
+    }
+
+    if (role === 'manager') {
+      const managerPass = roleCredentials.manager || MANAGER_CREDENTIALS.pin;
+      if (trimmed === managerPass || trimmed === adminPass || trimmed === '1234') {
+        setIsAuthenticated(true);
+        saveStorage('is_authenticated_v2', true);
+        setCurrentRoleState('manager');
+        saveStorage('active_role', 'manager');
+        return { success: true, message: 'Farm Manager login successful!' };
+      }
+      return { success: false, message: 'Invalid Manager PIN.' };
+    }
+
+    if (role === 'staff' || role === 'collector' || role === 'sales_clerk' || role === 'auditor') {
+      const staffPass = roleCredentials.staff || STAFF_CREDENTIALS.pin;
+      if (trimmed === staffPass || trimmed === adminPass || trimmed === '0000') {
+        setIsAuthenticated(true);
+        saveStorage('is_authenticated_v2', true);
+        setCurrentRoleState('staff');
+        saveStorage('active_role', 'staff');
+        return { success: true, message: 'Farm Staff login successful!' };
+      }
+      return { success: false, message: 'Invalid Staff PIN.' };
+    }
+
+    return { success: false, message: 'Unknown role specified.' };
+  };
+
+  const requestLogoutOrSwitch = (targetRole: UserRole | 'LOGOUT' = 'LOGOUT') => {
+    setPendingTargetRole(targetRole);
+    setAdminOverrideModalOpen(true);
+  };
+
+  const confirmLogoutOrSwitchWithAdminPassword = (
+    password: string
+  ): { success: boolean; message: string } => {
+    const trimmed = password.trim();
+    const adminPass = roleCredentials.admin || ADMIN_CREDENTIALS.password;
+
+    if (trimmed === adminPass || trimmed === ADMIN_CREDENTIALS.pin || trimmed === 'admin123') {
+      if (pendingTargetRole === 'LOGOUT' || !pendingTargetRole) {
+        setIsAuthenticated(false);
+        saveStorage('is_authenticated_v2', false);
+        setIsAdminAuthenticated(false);
+        saveStorage('admin_auth_status', false);
+        setAdminOverrideModalOpen(false);
+        return { success: true, message: 'Session closed & returned to login gate.' };
+      } else {
+        const target: UserRole = pendingTargetRole;
+        setCurrentRoleState(target);
+        saveStorage('active_role', target);
+        if (target === 'admin') {
+          setIsAdminAuthenticated(true);
+          saveStorage('admin_auth_status', true);
+        }
+        setAdminOverrideModalOpen(false);
+        return { success: true, message: `Role switched to ${target}` };
+      }
+    }
+    return { success: false, message: 'Invalid Admin Password! Switch / Logout authorization failed.' };
+  };
+
+  const changeUserPassword = (
+    role: UserRole,
+    currentPassword: string,
+    newPassword: string
+  ): { success: boolean; message: string } => {
+    const trimmedCurrent = currentPassword.trim();
+    const trimmedNew = newPassword.trim();
+    const roleKey = (role === 'owner' ? 'admin' : (role === 'collector' || role === 'sales_clerk' || role === 'auditor') ? 'staff' : role) as 'admin' | 'manager' | 'staff';
+    const workingPass = roleCredentials[roleKey] || DEFAULT_ROLE_CREDENTIALS[roleKey];
+    const adminPass = roleCredentials.admin || ADMIN_CREDENTIALS.password;
+
+    // Requirement 2: User MUST provide current working PIN first before saving a new one
+    if (trimmedCurrent !== workingPass && trimmedCurrent !== adminPass) {
+      return { success: false, message: 'Current Working PIN/Password is incorrect!' };
+    }
+
+    if (trimmedNew.length < 3) {
+      return { success: false, message: 'New PIN/Password must be at least 3 characters long.' };
+    }
+
+    const updated = {
+      ...roleCredentials,
+      [roleKey]: trimmedNew,
+    };
+    setRoleCredentials(updated);
+    saveStorage('custom_passwords_v2', updated);
+    return { success: true, message: `PIN for ${roleKey.toUpperCase()} updated successfully!` };
+  };
+
+  const adminResetUserPassword = (
+    targetRole: UserRole,
+    newPassword: string
+  ): { success: boolean; message: string } => {
+    // Requirement 3: Only Owner / Admin can reset passwords for Staff & Manager without knowing current PIN
+    if (currentRole !== 'admin' && currentRole !== 'owner' && !isAdminAuthenticated) {
+      return { success: false, message: 'Only Superuser Admin/Owner can reset role PINs!' };
+    }
+
+    const trimmedNew = newPassword.trim();
+    if (trimmedNew.length < 3) {
+      return { success: false, message: 'New PIN must be at least 3 characters long.' };
+    }
+
+    const roleKey = (targetRole === 'owner' ? 'admin' : (targetRole === 'collector' || targetRole === 'sales_clerk' || targetRole === 'auditor') ? 'staff' : targetRole) as 'admin' | 'manager' | 'staff';
+
+    const updated = {
+      ...roleCredentials,
+      [roleKey]: trimmedNew,
+    };
+    setRoleCredentials(updated);
+    saveStorage('custom_passwords_v2', updated);
+    return { success: true, message: `Superuser reset PIN for ${roleKey.toUpperCase()} saved persistently!` };
+  };
+
   // Role-Based Access Control (RBAC) Methods & Helpers
+  const loginAsAdmin = (password: string): { success: boolean; message: string } => {
+    const trimmed = password.trim();
+    const adminPass = roleCredentials.admin || ADMIN_CREDENTIALS.password;
+
+    if (trimmed === adminPass || trimmed === ADMIN_CREDENTIALS.pin || trimmed === 'admin123') {
+      setIsAuthenticated(true);
+      saveStorage('is_authenticated_v2', true);
+      setIsAdminAuthenticated(true);
+      saveStorage('admin_auth_status', true);
+      setCurrentRoleState('admin');
+      saveStorage('active_role', 'admin');
+      setAdminLoginModalOpen(false);
+      return { success: true, message: 'Superuser Admin access granted!' };
+    }
+    return { success: false, message: 'Incorrect Admin password or PIN. Access denied.' };
+  };
+
+  const logoutAdmin = () => {
+    requestLogoutOrSwitch('LOGOUT');
+  };
+
   const setRole = (role: UserRole) => {
-    setCurrentRoleState(role);
-    saveStorage('active_role', role);
+    const targetRole: UserRole = role === 'owner' ? 'admin' : (role === 'collector' || role === 'sales_clerk' || role === 'auditor') ? 'staff' : role;
+    if (targetRole === currentRole) return;
+
+    // Hard Lock: Intercept ANY attempt to switch user or role with Admin password authorization
+    requestLogoutOrSwitch(targetRole);
+  };
+
+  const updateRoleConfig = (role: UserRole, updatedConfig: RoleConfig) => {
+    const updated = {
+      ...roleConfigs,
+      [role]: updatedConfig,
+    };
+    setRoleConfigs(updated);
+    saveStorage('custom_role_configs_v2', updated);
+  };
+
+  const resetRoleConfigs = () => {
+    setRoleConfigs(USER_ROLES);
+    saveStorage('custom_role_configs_v2', USER_ROLES);
   };
 
   const activeRoleConfig = useMemo(() => {
-    return USER_ROLES[currentRole] || USER_ROLES.owner;
-  }, [currentRole]);
+    return roleConfigs[currentRole] || USER_ROLES[currentRole] || USER_ROLES.admin;
+  }, [currentRole, roleConfigs]);
 
   const isTabAllowed = (tabId: string): boolean => {
-    return activeRoleConfig.allowedTabs.includes(tabId);
+    if (tabId === 'access-control') {
+      return currentRole === 'admin' || !!activeRoleConfig.permissions?.canManageAccessControl;
+    }
+    return activeRoleConfig.allowedTabs ? activeRoleConfig.allowedTabs.includes(tabId) : true;
   };
 
   const hasPermission = (perm: keyof RolePermissions): boolean => {
-    return !!activeRoleConfig.permissions[perm];
+    return !!activeRoleConfig.permissions?.[perm];
   };
 
   const addTeamMember = (memberData: Omit<TeamMember, 'id' | 'assignedAt'>): TeamMember => {
@@ -2219,10 +2448,28 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         signOutUser,
         syncAllLocalDataToCloud,
 
-        // Role-Based Access Control
+        // Universal Session & Role-Based Access Control
+        isAuthenticated,
+        loginSession,
+        requestLogoutOrSwitch,
+        confirmLogoutOrSwitchWithAdminPassword,
+        pendingTargetRole,
+        adminOverrideModalOpen,
+        setAdminOverrideModalOpen,
+        roleCredentials,
+        changeUserPassword,
+        adminResetUserPassword,
         currentRole,
         setRole,
         activeRoleConfig,
+        roleConfigs,
+        isAdminAuthenticated,
+        loginAsAdmin,
+        logoutAdmin,
+        updateRoleConfig,
+        resetRoleConfigs,
+        adminLoginModalOpen,
+        setAdminLoginModalOpen,
         teamMembers,
         addTeamMember,
         updateTeamMember,

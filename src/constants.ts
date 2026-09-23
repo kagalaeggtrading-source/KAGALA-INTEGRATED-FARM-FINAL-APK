@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { EggGradeConfig, FarmProfile, ExpenseCategory, UserRole, RoleConfig } from './types';
+import { EggGradeConfig, FarmProfile, ExpenseCategory, UserRole, RoleConfig, RoleCredentials } from './types';
 
 export const EGG_GRADES: EggGradeConfig[] = [
   { key: 'peewee', label: 'Peewee', weightRange: '<45g', description: 'Under 45g' },
@@ -64,17 +64,61 @@ export function formatPercent(val: number): string {
   return `${val.toFixed(1)}%`;
 }
 
-export const DEFAULT_USER_ROLE: UserRole = 'owner';
+export const ADMIN_CREDENTIALS = {
+  username: 'admin',
+  password: 'admin123',
+  pin: '8888',
+};
+
+export const MANAGER_CREDENTIALS = {
+  username: 'manager',
+  pin: '1234',
+};
+
+export const STAFF_CREDENTIALS = {
+  username: 'staff',
+  pin: '0000',
+};
+
+export const DEFAULT_ROLE_CREDENTIALS: RoleCredentials = {
+  admin: 'admin123',
+  manager: '1234',
+  staff: '0000',
+};
+
+export const DEFAULT_USER_ROLE: UserRole = 'admin';
+
+export const ALL_APP_MODULES = [
+  { id: 'dashboard', label: 'Command Center / Dashboard' },
+  { id: 'flock', label: 'Flock / RTL Birds' },
+  { id: 'production', label: 'Daily Egg Production' },
+  { id: 'inventory', label: 'Egg Inventory' },
+  { id: 'feed', label: 'Feed & Consumption' },
+  { id: 'supplies', label: 'Medicine & Supplies' },
+  { id: 'customers', label: 'Customer Management' },
+  { id: 'orders', label: 'Order Management' },
+  { id: 'sales', label: 'Sales & Invoicing' },
+  { id: 'payments', label: 'Customer Payments' },
+  { id: 'expenses', label: 'Expense Management' },
+  { id: 'bank-deposits', label: 'Bank & Deposits' },
+  { id: 'cashflow', label: 'Cashflow Accounts' },
+  { id: 'production-cost', label: 'Cost of Production' },
+  { id: 'record-check', label: '🔍 Record Check / Audit' },
+  { id: 'trash', label: 'Trash Bin' },
+  { id: 'reports', label: 'Reports & Analytics' },
+  { id: 'settings', label: 'Farm Profile & Settings' },
+];
 
 export const USER_ROLES: Record<UserRole, RoleConfig> = {
-  owner: {
-    id: 'owner',
-    title: 'Farm Owner',
-    badge: '👑 Owner / Admin',
+  admin: {
+    id: 'admin',
+    title: 'Superuser Admin',
+    badge: '👑 Admin (Superuser)',
     color: 'emerald',
-    description: 'Master owner authority with full financial and administrative control over the entire farm enterprise.',
-    boundarySummary: 'Zero boundaries. Full visibility into bank balances, cash reserves, profit/loss, cost per tray, settings, and database backups.',
+    description: 'Full superuser authority with access to Access Control Panel, financial management, settings, and full system configuration.',
+    boundarySummary: 'Superuser access. Zero boundaries. Can manage Access Control for Manager and Staff.',
     allowedTabs: [
+      'access-control',
       'dashboard',
       'flock',
       'production',
@@ -105,16 +149,18 @@ export const USER_ROLES: Record<UserRole, RoleConfig> = {
       canManageBanking: true,
       canManageSystem: true,
       canRunAudits: true,
+      canManageAccessControl: true,
+      canDeleteRecords: true,
     },
   },
 
   manager: {
     id: 'manager',
-    title: 'Farm Supervisor / Manager',
-    badge: '📋 Farm Supervisor',
+    title: 'Farm Manager',
+    badge: '📋 Manager',
     color: 'blue',
-    description: 'Oversees daily poultry operations, egg inventories, flock health, customer dispatches, and operational expenses.',
-    boundarySummary: 'Full operational & commercial visibility. Sensitive bank reserves, raw bank account balances, database reset, and branding are restricted.',
+    description: 'Oversees daily farm operations, inventory, orders, sales, and operational expenses as permitted by Admin.',
+    boundarySummary: 'Operational & management access as configured by Admin. Access Control Panel and system wipe restricted.',
     allowedTabs: [
       'dashboard',
       'flock',
@@ -132,26 +178,28 @@ export const USER_ROLES: Record<UserRole, RoleConfig> = {
       'reports',
     ],
     permissions: {
-      viewFinancialMetrics: true, // Sees sales, collections, expenses, AR
+      viewFinancialMetrics: true,
       viewFlockMetrics: true,
       viewSalesMetrics: true,
       viewInventoryMetrics: true,
       canLogProduction: true,
       canLogSales: true,
       canLogExpenses: true,
-      canManageBanking: false, // Bank accounts reserved for Owner
-      canManageSystem: false,  // Database reset/backup reserved for Owner
+      canManageBanking: false,
+      canManageSystem: false,
       canRunAudits: true,
+      canManageAccessControl: false,
+      canDeleteRecords: true,
     },
   },
 
-  collector: {
-    id: 'collector',
-    title: 'Flock & Egg Hand / Caretaker',
-    badge: '🥚 Flock & Egg Hand',
+  staff: {
+    id: 'staff',
+    title: 'Farm Staff',
+    badge: '🧑‍🌾 Staff',
     color: 'amber',
-    description: 'Poultry house caretaker. Enters egg collection logs, mortality counts, sorting breakdown, and feed bag usage.',
-    boundarySummary: 'Strict operational focus. Confidential financial figures (sales revenue, cash on hand, bank balances, customer debt, profit margins) are completely hidden.',
+    description: 'Field & sales staff. Performs daily egg logging, feed usage, order taking, or stock checks as permitted by Admin.',
+    boundarySummary: 'Restricted operational access. Unallowed financial, banking, and management modules are blinded.',
     allowedTabs: [
       'dashboard',
       'flock',
@@ -159,59 +207,42 @@ export const USER_ROLES: Record<UserRole, RoleConfig> = {
       'inventory',
       'feed',
       'supplies',
+      'orders',
     ],
     permissions: {
-      viewFinancialMetrics: false, // STRICT PRIVACY: No sales, bank balances, cash, expenses
+      viewFinancialMetrics: false,
       viewFlockMetrics: true,
       viewSalesMetrics: false,
-      viewInventoryMetrics: true,  // Sees trays & feed bags
-      canLogProduction: true,      // Can log eggs, mortalities, feed used
-      canLogSales: false,
-      canLogExpenses: false,
-      canManageBanking: false,
-      canManageSystem: false,
-      canRunAudits: false,
-    },
-  },
-
-  sales_clerk: {
-    id: 'sales_clerk',
-    title: 'Sales & Dispatch Cashier',
-    badge: '🧾 Sales & Dispatch Clerk',
-    color: 'purple',
-    description: 'Customer point of contact. Processes customer orders, generates egg sales invoices, receives payments, and checks tray availability.',
-    boundarySummary: 'Commercial boundaries enforced. Flock mortalities, bird ages/strains, feed stock formulas, bank accounts, and farm operating expenses are hidden.',
-    allowedTabs: [
-      'dashboard',
-      'customers',
-      'orders',
-      'sales',
-      'payments',
-      'inventory',
-    ],
-    permissions: {
-      viewFinancialMetrics: false, // No bank balances, no operating expenses, no cash on hand
-      viewFlockMetrics: false,     // No mortality, no bird headcounts
-      viewSalesMetrics: true,      // Orders, sales invoices, payments, receivables
-      viewInventoryMetrics: true,  // Available trays for delivery
-      canLogProduction: false,
+      viewInventoryMetrics: true,
+      canLogProduction: true,
       canLogSales: true,
       canLogExpenses: false,
       canManageBanking: false,
       canManageSystem: false,
       canRunAudits: false,
+      canManageAccessControl: false,
+      canDeleteRecords: false,
     },
   },
 
-  auditor: {
-    id: 'auditor',
-    title: 'Financial Auditor / Accountant',
-    badge: '🔍 Auditor / Bookkeeper',
-    color: 'indigo',
-    description: 'Financial auditor and bookkeeper. Reviews transactions, verifies cashflow reconciliations, sales receipts, and bank deposit slips.',
-    boundarySummary: 'Financial oversight & compliance focus. Cannot log daily egg collections or alter flock populations.',
+  // Legacy compatibility mappings
+  owner: {
+    id: 'owner',
+    title: 'Superuser Admin',
+    badge: '👑 Admin (Superuser)',
+    color: 'emerald',
+    description: 'Full superuser authority with access to Access Control Panel, financial management, settings, and full system configuration.',
+    boundarySummary: 'Superuser access. Zero boundaries. Can manage Access Control for Manager and Staff.',
     allowedTabs: [
+      'access-control',
       'dashboard',
+      'flock',
+      'production',
+      'inventory',
+      'feed',
+      'supplies',
+      'customers',
+      'orders',
       'sales',
       'payments',
       'expenses',
@@ -219,8 +250,82 @@ export const USER_ROLES: Record<UserRole, RoleConfig> = {
       'cashflow',
       'production-cost',
       'record-check',
+      'trash',
       'reports',
+      'settings',
     ],
+    permissions: {
+      viewFinancialMetrics: true,
+      viewFlockMetrics: true,
+      viewSalesMetrics: true,
+      viewInventoryMetrics: true,
+      canLogProduction: true,
+      canLogSales: true,
+      canLogExpenses: true,
+      canManageBanking: true,
+      canManageSystem: true,
+      canRunAudits: true,
+      canManageAccessControl: true,
+      canDeleteRecords: true,
+    },
+  },
+
+  collector: {
+    id: 'collector',
+    title: 'Farm Staff',
+    badge: '🧑‍🌾 Staff',
+    color: 'amber',
+    description: 'Field & sales staff.',
+    boundarySummary: 'Restricted operational access.',
+    allowedTabs: ['dashboard', 'flock', 'production', 'inventory', 'feed', 'supplies'],
+    permissions: {
+      viewFinancialMetrics: false,
+      viewFlockMetrics: true,
+      viewSalesMetrics: false,
+      viewInventoryMetrics: true,
+      canLogProduction: true,
+      canLogSales: false,
+      canLogExpenses: false,
+      canManageBanking: false,
+      canManageSystem: false,
+      canRunAudits: false,
+      canManageAccessControl: false,
+      canDeleteRecords: false,
+    },
+  },
+
+  sales_clerk: {
+    id: 'sales_clerk',
+    title: 'Farm Staff',
+    badge: '🧑‍🌾 Staff',
+    color: 'purple',
+    description: 'Field & sales staff.',
+    boundarySummary: 'Restricted operational access.',
+    allowedTabs: ['dashboard', 'customers', 'orders', 'sales', 'payments', 'inventory'],
+    permissions: {
+      viewFinancialMetrics: false,
+      viewFlockMetrics: false,
+      viewSalesMetrics: true,
+      viewInventoryMetrics: true,
+      canLogProduction: false,
+      canLogSales: true,
+      canLogExpenses: false,
+      canManageBanking: false,
+      canManageSystem: false,
+      canRunAudits: false,
+      canManageAccessControl: false,
+      canDeleteRecords: false,
+    },
+  },
+
+  auditor: {
+    id: 'auditor',
+    title: 'Farm Staff',
+    badge: '🧑‍🌾 Staff',
+    color: 'indigo',
+    description: 'Field & sales staff.',
+    boundarySummary: 'Restricted operational access.',
+    allowedTabs: ['dashboard', 'sales', 'payments', 'expenses', 'reports'],
     permissions: {
       viewFinancialMetrics: true,
       viewFlockMetrics: false,
@@ -229,9 +334,11 @@ export const USER_ROLES: Record<UserRole, RoleConfig> = {
       canLogProduction: false,
       canLogSales: false,
       canLogExpenses: false,
-      canManageBanking: true,
+      canManageBanking: false,
       canManageSystem: false,
       canRunAudits: true,
+      canManageAccessControl: false,
+      canDeleteRecords: false,
     },
   },
 };

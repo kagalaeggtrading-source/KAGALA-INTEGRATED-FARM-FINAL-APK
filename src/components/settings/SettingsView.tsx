@@ -21,6 +21,8 @@ import {
   Cloud,
   Smartphone,
   ExternalLink,
+  Lock,
+  KeyRound,
 } from 'lucide-react';
 import { FarmProfile } from '../../types';
 import { CloudSyncModal } from '../common/CloudSyncModal';
@@ -36,6 +38,8 @@ export const SettingsView: React.FC = () => {
     resetToZeroData,
     syncStatus,
     lastSyncedAt,
+    currentRole,
+    changeUserPassword,
   } = useFarm();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +48,11 @@ export const SettingsView: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [logoPreviewDark, setLogoPreviewDark] = useState(false);
   const [cloudModalOpen, setCloudModalOpen] = useState(false);
+
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [pinMessage, setPinMessage] = useState<{ success: boolean; text: string } | null>(null);
 
   const handleLogoUpload = (file: File) => {
     if (!file) return;
@@ -416,6 +425,109 @@ export const SettingsView: React.FC = () => {
             <div className="text-[11px] text-emerald-400 mt-1">Zero monthly hosting cost</div>
           </div>
         </div>
+      </div>
+
+      {/* SECTION 4: SECURITY & PIN MANAGEMENT */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 space-y-4">
+        <div>
+          <h3 className="font-heading font-bold text-sm text-slate-900 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-emerald-700" />
+            <span>Security & PIN Management ({currentRole.toUpperCase()})</span>
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Update your account security PIN. You must enter your current working PIN first to verify identity.
+          </p>
+        </div>
+
+        {pinMessage && (
+          <div
+            className={`p-3.5 rounded-xl border text-xs flex items-center gap-2 ${
+              pinMessage.success
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-rose-50 border-rose-200 text-rose-900'
+            }`}
+          >
+            {pinMessage.success ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+            )}
+            <span>{pinMessage.text}</span>
+          </div>
+        )}
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setPinMessage(null);
+            if (newPin !== confirmPin) {
+              setPinMessage({ success: false, text: 'New PIN and Confirm PIN do not match!' });
+              return;
+            }
+            const res = changeUserPassword(currentRole, currentPin, newPin);
+            if (res.success) {
+              setPinMessage({ success: true, text: res.message });
+              setCurrentPin('');
+              setNewPin('');
+              setConfirmPin('');
+            } else {
+              setPinMessage({ success: false, text: res.message });
+            }
+          }}
+          className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs pt-1"
+        >
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">
+              Current Working PIN / Password *
+            </label>
+            <input
+              type="password"
+              required
+              value={currentPin}
+              onChange={(e) => setCurrentPin(e.target.value)}
+              placeholder="Enter current PIN..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">New PIN / Password *</label>
+            <input
+              type="password"
+              required
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value)}
+              placeholder="Enter new PIN..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 mb-1">Confirm New PIN *</label>
+            <input
+              type="password"
+              required
+              value={confirmPin}
+              onChange={(e) => setConfirmPin(e.target.value)}
+              placeholder="Re-enter new PIN..."
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+            />
+          </div>
+
+          <div className="sm:col-span-3 flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-100">
+            <p className="text-[11px] text-slate-500">
+              * If a Manager or Staff member forgets their password, they must ask the Farm Owner to reset it via the Admin Dashboard.
+            </p>
+
+            <button
+              type="submit"
+              className="inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-4 py-2.5 rounded-lg shadow-xs transition-colors cursor-pointer w-full sm:w-auto"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>Update My PIN</span>
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* SECTION 4: DATABASE BACKUP & RESTORE */}

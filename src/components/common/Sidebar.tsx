@@ -25,6 +25,7 @@ import {
   Upload,
   Trash2,
   Shield,
+  ShieldCheck,
   Lock,
 } from 'lucide-react';
 
@@ -34,13 +35,25 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onNavigate }) => {
-  const { profile, orders, auditReport, trashItems, activeRoleConfig, isTabAllowed, currentRole, setRole } = useFarm();
+  const {
+    profile,
+    orders,
+    auditReport,
+    trashItems,
+    activeRoleConfig,
+    isTabAllowed,
+    currentRole,
+    requestLogoutOrSwitch,
+  } = useFarm();
 
   const pendingOrdersCount = orders.filter(
     o => o.status === 'NEW' || o.status === 'CONFIRMED' || o.status === 'RESERVED'
   ).length;
 
   const allNavItems = [
+    ...(currentRole === 'admin'
+      ? [{ id: 'access-control', label: '🛡️ Access Control Panel', icon: ShieldCheck }]
+      : []),
     { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
     { id: 'flock', label: 'Flock / RTL Birds', icon: Bird },
     { id: 'production', label: 'Daily Egg Production', icon: Egg },
@@ -161,14 +174,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onNavigate }) => {
         <div className="flex items-center justify-between">
           <span className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold flex items-center gap-1">
             <Shield className="w-3 h-3 text-emerald-400" />
-            Active Role
+            Active Session
           </span>
-          {currentRole !== 'owner' && (
+          {(currentRole === 'admin' || currentRole === 'owner') && (
             <button
-              onClick={() => setRole('owner')}
-              className="text-[10px] text-emerald-400 hover:text-emerald-300 font-semibold underline cursor-pointer"
+              onClick={requestLogoutOrSwitch}
+              className="text-[10px] text-rose-400 hover:text-rose-300 font-semibold underline cursor-pointer"
             >
-              Reset Owner
+              Lock Session
             </button>
           )}
         </div>

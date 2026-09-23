@@ -56,6 +56,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     activeRoleConfig,
     currentRole,
     setRole,
+    hasPermission,
+    isTabAllowed,
   } = useFarm();
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -189,27 +191,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
         {/* Quick Action Shortcuts */}
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => onNavigate('production')}
-            className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Log Daily Eggs</span>
-          </button>
-          <button
-            onClick={() => onNavigate('sales')}
-            className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs"
-          >
-            <Receipt className="w-4 h-4" />
-            <span>New Sale</span>
-          </button>
-          <button
-            onClick={() => onNavigate('orders')}
-            className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer"
-          >
-            <ShoppingCart className="w-4 h-4" />
-            <span>New Order</span>
-          </button>
+          {hasPermission('canLogProduction') && isTabAllowed('production') && (
+            <button
+              onClick={() => onNavigate('production')}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Log Daily Eggs</span>
+            </button>
+          )}
+          {hasPermission('canLogSales') && isTabAllowed('sales') && (
+            <button
+              onClick={() => onNavigate('sales')}
+              className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs"
+            >
+              <Receipt className="w-4 h-4" />
+              <span>New Sale</span>
+            </button>
+          )}
+          {hasPermission('canLogSales') && isTabAllowed('orders') && (
+            <button
+              onClick={() => onNavigate('orders')}
+              className="flex items-center gap-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer"
+            >
+              <ShoppingCart className="w-4 h-4" />
+              <span>New Order</span>
+            </button>
+          )}
         </div>
       </div>
 

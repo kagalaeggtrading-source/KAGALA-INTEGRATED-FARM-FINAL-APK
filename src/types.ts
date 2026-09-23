@@ -464,7 +464,7 @@ export interface TrashItem {
   data: any;
 }
 
-export type UserRole = 'owner' | 'manager' | 'collector' | 'sales_clerk' | 'auditor';
+export type UserRole = 'admin' | 'manager' | 'staff' | 'owner' | 'collector' | 'sales_clerk' | 'auditor';
 
 export interface RolePermissions {
   viewFinancialMetrics: boolean; // Bank balance, Cash on hand, Revenue, Profit/Loss, Expenses
@@ -477,13 +477,15 @@ export interface RolePermissions {
   canManageBanking: boolean;     // Bank accounts, deposits, transfers
   canManageSystem: boolean;      // Settings, profile, database reset, trash
   canRunAudits: boolean;         // Record checks, reconciliation
+  canManageAccessControl: boolean; // Access Control Panel (Admin only)
+  canDeleteRecords: boolean;     // Move items to trash / purge trash
 }
 
 export interface RoleConfig {
   id: UserRole;
   title: string;
   badge: string;
-  color: 'emerald' | 'blue' | 'amber' | 'purple' | 'indigo';
+  color: 'emerald' | 'blue' | 'amber' | 'purple' | 'indigo' | 'slate' | 'rose';
   description: string;
   boundarySummary: string;
   allowedTabs: string[];
@@ -498,4 +500,10 @@ export interface TeamMember {
   phone?: string;
   notes?: string;
   assignedAt: string;
+}
+
+export interface RoleCredentials {
+  admin: string;
+  manager: string;
+  staff: string;
 }

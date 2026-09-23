@@ -8,7 +8,11 @@ import { FarmProvider, useFarm } from './context/FarmContext';
 import { Sidebar } from './components/common/Sidebar';
 import { Header } from './components/common/Header';
 import { AccessRestrictedView } from './components/common/AccessRestrictedView';
+import { AdminLoginModal } from './components/common/AdminLoginModal';
+import { LoginPage } from './components/auth/LoginPage';
+import { AdminOverrideModal } from './components/auth/AdminOverrideModal';
 
+import { AccessControlPanelView } from './components/admin/AccessControlPanelView';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { FlockView } from './components/flock/FlockView';
 import { EggProductionView } from './components/production/EggProductionView';
@@ -29,7 +33,12 @@ import { Menu, X } from 'lucide-react';
 function AppContent() {
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
-  const { isTabAllowed } = useFarm();
+  const { isAuthenticated, isTabAllowed } = useFarm();
+
+  // Universal Login Gate: Completely blocks layout if not authenticated
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
 
   const handleNavigate = (tab: string) => {
     setActiveTab(tab);
@@ -44,6 +53,8 @@ function AppContent() {
     }
 
     switch (activeTab) {
+      case 'access-control':
+        return <AccessControlPanelView onNavigate={handleNavigate} />;
       case 'dashboard':
         return <DashboardView onNavigate={handleNavigate} />;
       case 'flock':
@@ -86,6 +97,12 @@ function AppContent() {
 
   return (
     <div className="flex h-screen bg-slate-100 font-sans text-slate-800 antialiased overflow-hidden">
+      {/* Admin Credential Verification Modal */}
+      <AdminLoginModal />
+
+      {/* Mandatory Admin Password Logout Override Modal */}
+      <AdminOverrideModal />
+
       {/* Mobile Sidebar Backdrop */}
       {mobileMenuOpen && (
         <div
