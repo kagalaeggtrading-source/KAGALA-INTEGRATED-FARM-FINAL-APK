@@ -1,0 +1,200 @@
+{
+  "entities": {
+    "farmProfile": {
+      "title": "Farm Profile",
+      "description": "General settings and farm identification",
+      "type": "object",
+      "properties": {
+        "farmName": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "currency": { "type": "string" },
+        "logoUrl": { "type": "string" }
+      }
+    },
+    "farmLocation": {
+      "title": "Farm Location",
+      "description": "Physical farm sites or facilities",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "farmHouse": {
+      "title": "Farm House",
+      "description": "Poultry building or coop housing flocks",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "farmId": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "capacity": { "type": "number" },
+        "houseType": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "farmId", "name"]
+    },
+    "flock": {
+      "title": "Flock",
+      "description": "Batch of laying hens",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "farmId": { "type": "string" },
+        "houseId": { "type": "string" },
+        "batchName": { "type": "string" },
+        "breed": { "type": "string" },
+        "hatchDate": { "type": "string" },
+        "placementDate": { "type": "string" },
+        "initialPopulation": { "type": "number" },
+        "currentPopulation": { "type": "number" },
+        "culls": { "type": "number" },
+        "mortality": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "batchName"]
+    },
+    "eggProductionLog": {
+      "title": "Egg Production Log",
+      "description": "Daily egg collection record with grading breakdown",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "flockId": { "type": "string" },
+        "farmId": { "type": "string" },
+        "houseId": { "type": "string" },
+        "totalCollection": { "type": "number" },
+        "rejects": { "type": "number" },
+        "usableEggs": { "type": "number" },
+        "collectorName": { "type": "string" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "date", "totalCollection"]
+    },
+    "feedItem": {
+      "title": "Feed Inventory Item",
+      "description": "Bagged feed in stock",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "brand": { "type": "string" },
+        "feedType": { "type": "string" },
+        "currentBags": { "type": "number" },
+        "costPerBag": { "type": "number" }
+      },
+      "required": ["id", "brand", "feedType"]
+    },
+    "customer": {
+      "title": "Customer",
+      "description": "Egg buyers and trade partners",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "contactNumber": { "type": "string" },
+        "customerType": { "type": "string" }
+      },
+      "required": ["id", "name"]
+    },
+    "sale": {
+      "title": "Sales Invoice",
+      "description": "Egg sales transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "saleNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "date": { "type": "string" },
+        "total": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "balance": { "type": "number" },
+        "paymentStatus": { "type": "string" }
+      },
+      "required": ["id", "saleNumber", "total"]
+    },
+    "expense": {
+      "title": "Farm Expense",
+      "description": "Operational farm expense voucher",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "expenseNumber": { "type": "string" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "amount", "category"]
+    },
+    "teamMember": {
+      "title": "Team Member",
+      "description": "Farm staff member and assigned RBAC role",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "role": { "type": "string" },
+        "phone": { "type": "string" },
+        "notes": { "type": "string" },
+        "assignedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "role"]
+    }
+  },
+  "firestore": {
+    "/farm_profile/main": {
+      "schema": "farmProfile",
+      "description": "Global farm profile and branding data"
+    },
+    "/farms/{farmId}": {
+      "schema": "farmLocation",
+      "description": "Farm facilities and locations"
+    },
+    "/houses/{houseId}": {
+      "schema": "farmHouse",
+      "description": "Houses and coops"
+    },
+    "/flocks/{flockId}": {
+      "schema": "flock",
+      "description": "Active and past poultry flocks"
+    },
+    "/egg_production_logs/{logId}": {
+      "schema": "eggProductionLog",
+      "description": "Daily egg collection logs"
+    },
+    "/feed_items/{itemId}": {
+      "schema": "feedItem",
+      "description": "Feed inventory stock"
+    },
+    "/customers/{customerId}": {
+      "schema": "customer",
+      "description": "Customers list"
+    },
+    "/sales/{saleId}": {
+      "schema": "sale",
+      "description": "Egg sales invoices"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "expense",
+      "description": "Farm expenditures"
+    },
+    "/team_members/{memberId}": {
+      "schema": "teamMember",
+      "description": "Farm staff and role assignments"
+    }
+  }
+}

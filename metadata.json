@@ -1,0 +1,6 @@
+{
+  "name": "Kagala Integrated Farm",
+  "description": "Production-grade farm management system and command center for Kagala Integrated Farm.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

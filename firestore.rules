@@ -1,0 +1,137 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Test connection doc
+    match /test/{docId} {
+      allow read, write: if true;
+    }
+
+    // Farm Profile
+    match /farm_profile/{docId} {
+      allow read, write: if true;
+    }
+
+    // Farm locations
+    match /farms/{farmId} {
+      allow read, write: if true;
+    }
+
+    // Houses
+    match /houses/{houseId} {
+      allow read, write: if true;
+    }
+
+    // Flocks
+    match /flocks/{flockId} {
+      allow read, write: if true;
+    }
+
+    // Flock Adjustments
+    match /flock_adjustments/{adjId} {
+      allow read, write: if true;
+    }
+
+    // Egg Production Logs
+    match /egg_production_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Egg Adjustments
+    match /egg_adjustments/{adjId} {
+      allow read, write: if true;
+    }
+
+    // Feed Items
+    match /feed_items/{itemId} {
+      allow read, write: if true;
+    }
+
+    // Feed Consumption
+    match /feed_consumption_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Feed Purchases
+    match /feed_purchase_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Supply Items
+    match /supply_items/{itemId} {
+      allow read, write: if true;
+    }
+
+    // Supply Usage
+    match /supply_usage_logs/{logId} {
+      allow read, write: if true;
+    }
+
+    // Customers
+    match /customers/{customerId} {
+      allow read, write: if true;
+    }
+
+    // Orders
+    match /orders/{orderId} {
+      allow read, write: if true;
+    }
+
+    // Sales
+    match /sales/{saleId} {
+      allow read, write: if true;
+    }
+
+    // Payments
+    match /payments/{paymentId} {
+      allow read, write: if true;
+    }
+
+    // Expenses
+    match /expenses/{expenseId} {
+      allow read, write: if true;
+    }
+
+    // Bank Accounts
+    match /bank_accounts/{accountId} {
+      allow read, write: if true;
+    }
+
+    // Bank Deposits
+    match /bank_deposits/{depositId} {
+      allow read, write: if true;
+    }
+
+    // Internal Transfers
+    match /internal_transfers/{transferId} {
+      allow read, write: if true;
+    }
+
+    // Finances (Cash on hand)
+    match /farm_finances/{docId} {
+      allow read, write: if true;
+    }
+
+    // Trash Items
+    match /trash_items/{trashId} {
+      allow read, write: if true;
+    }
+
+    // Team Members (Role assignments)
+    match /team_members/{memberId} {
+      allow read, write: if true;
+    }
+  }
+}
