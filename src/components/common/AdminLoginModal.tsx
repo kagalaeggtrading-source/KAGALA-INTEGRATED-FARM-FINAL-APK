@@ -5,7 +5,7 @@
 
 import React, { useState } from 'react';
 import { useFarm } from '../../context/FarmContext';
-import { ShieldCheck, Lock, Eye, EyeOff, X, KeyRound, AlertCircle } from 'lucide-react';
+import { ShieldCheck, Eye, EyeOff, X, KeyRound, AlertCircle } from 'lucide-react';
 
 export const AdminLoginModal: React.FC = () => {
   const { adminLoginModalOpen, setAdminLoginModalOpen, loginAsAdmin } = useFarm();
@@ -88,16 +88,6 @@ export const AdminLoginModal: React.FC = () => {
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-          </div>
-
-          <div className="p-3 bg-emerald-50 border border-emerald-200/80 rounded-xl text-emerald-900 text-xs space-y-1">
-            <div className="font-semibold flex items-center gap-1.5 text-emerald-800">
-              <Lock className="w-3.5 h-3.5" />
-              <span>Default Admin Credential</span>
-            </div>
-            <p className="text-slate-600 leading-relaxed text-[11px]">
-              Superuser Admin Credential: <code className="bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded font-mono font-bold">admin123</code> or PIN <code className="bg-emerald-100 text-emerald-900 px-1.5 py-0.5 rounded font-mono font-bold">8888</code>
-            </p>
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2">

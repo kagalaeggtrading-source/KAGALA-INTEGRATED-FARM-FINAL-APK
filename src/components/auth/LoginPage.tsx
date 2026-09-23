@@ -46,7 +46,6 @@ export const LoginPage: React.FC = () => {
           badge: '👑 Admin (Superuser)',
           desc: 'Full administrative authority, Access Control Panel & settings.',
           color: 'emerald',
-          hint: 'Password: admin123 or PIN 8888',
         };
       case 'manager':
         return {
@@ -54,7 +53,6 @@ export const LoginPage: React.FC = () => {
           badge: '📋 Manager',
           desc: 'Daily farm coops, inventory management, sales & expenses.',
           color: 'blue',
-          hint: 'Default PIN: 1234',
         };
       case 'staff':
       case 'collector':
@@ -65,7 +63,6 @@ export const LoginPage: React.FC = () => {
           badge: '🧑‍🌾 Staff',
           desc: 'Field worker - egg harvest, mortality, orders & stock logs.',
           color: 'amber',
-          hint: 'Default PIN: 0000',
         };
     }
   };
@@ -173,7 +170,6 @@ export const LoginPage: React.FC = () => {
         <div className="p-3 bg-slate-950/70 rounded-2xl border border-slate-800/80 text-xs space-y-1">
           <div className="font-bold text-white flex items-center justify-between">
             <span>{activeBadge.badge}</span>
-            <span className="text-[10px] text-slate-400 font-mono">{activeBadge.hint}</span>
           </div>
           <p className="text-slate-400 text-[11px] leading-relaxed">{activeBadge.desc}</p>
         </div>
@@ -199,7 +195,7 @@ export const LoginPage: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 value={passwordOrPin}
                 onChange={e => setPasswordOrPin(e.target.value)}
-                placeholder={selectedRole === 'admin' ? 'Enter admin password...' : 'Enter PIN...'}
+                placeholder={selectedRole === 'admin' ? 'Enter password...' : 'Enter PIN...'}
                 autoFocus
                 className="w-full pl-9 pr-10 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-sm font-medium text-white placeholder-slate-600 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
               />
@@ -223,7 +219,7 @@ export const LoginPage: React.FC = () => {
         </form>
       </div>
 
-      {/* Footer Credentials Info */}
+      {/* Footer Info */}
       <div className="pb-4 pt-4 text-center text-slate-500 text-[11px] z-10 space-y-1">
         <div className="flex items-center justify-center gap-2 font-mono">
           <span>Enterprise Security v2.0</span>

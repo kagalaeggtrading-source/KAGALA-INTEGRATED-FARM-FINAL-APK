@@ -99,7 +99,7 @@ export const AdminOverrideModal: React.FC = () => {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Enter Admin password (e.g. admin123)..."
+                placeholder="Enter Admin password..."
                 autoFocus
                 className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-medium focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all"
               />
