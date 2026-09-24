@@ -106,12 +106,18 @@ interface FarmContextType {
   addEggAdjustment: (adj: Omit<EggInventoryAdjustment, 'id' | 'createdAt'>) => void;
   deleteEggAdjustment: (id: string) => void;
 
-  // Inventory
+  // Inventory & Reconciliation Tracking
   eggStockSummary: Record<EggGradeKey, EggStockSummary>;
   totalPhysicalEggs: number;
   totalAvailableEggs: number;
   totalAvailableTrays: number;
   totalReservedEggs: number;
+  totalGoodEggsCollected: number;
+  totalEggsSold: number;
+  inventoryRemaining: number;
+  hasSalesDiscrepancy: boolean;
+  potentialRevenue: number;
+  actualRealizedRevenue: number;
 
   // Feed
   feedItems: FeedItem[];
@@ -1110,6 +1116,38 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const totalReservedEggs = useMemo(() => {
     return Object.values(eggStockSummary).reduce((sum, s) => sum + s.reserved, 0);
   }, [eggStockSummary]);
+
+  // Egg Reconciliation & Inventory Tracking Computations
+  const totalGoodEggsCollected = useMemo(() => {
+    return eggProductionLogs.reduce((sum, log) => sum + log.usableEggs, 0);
+  }, [eggProductionLogs]);
+
+  const totalEggsSold = useMemo(() => {
+    return sales.reduce((totalSum, sale) => {
+      const salePcs = (sale.items || []).reduce((itemSum, item) => {
+        const pcs = item.priceType === 'tray' ? item.quantityTrays * 30 : item.quantityPieces;
+        return itemSum + (pcs || 0);
+      }, 0);
+      return totalSum + salePcs;
+    }, 0);
+  }, [sales]);
+
+  const inventoryRemaining = useMemo(() => {
+    return totalGoodEggsCollected - totalEggsSold;
+  }, [totalGoodEggsCollected, totalEggsSold]);
+
+  const hasSalesDiscrepancy = useMemo(() => {
+    return totalEggsSold > totalGoodEggsCollected;
+  }, [totalGoodEggsCollected, totalEggsSold]);
+
+  const actualRealizedRevenue = useMemo(() => {
+    return sales.reduce((sum, s) => sum + s.total, 0);
+  }, [sales]);
+
+  const potentialRevenue = useMemo(() => {
+    const avgPricePerEgg = totalEggsSold > 0 ? (actualRealizedRevenue / totalEggsSold) : 7.00;
+    return totalGoodEggsCollected * avgPricePerEgg;
+  }, [totalGoodEggsCollected, totalEggsSold, actualRealizedRevenue]);
 
   // Feed Operations
   const addFeedItem = (
@@ -2355,6 +2393,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         totalAvailableEggs,
         totalAvailableTrays,
         totalReservedEggs,
+        totalGoodEggsCollected,
+        totalEggsSold,
+        inventoryRemaining,
+        hasSalesDiscrepancy,
+        potentialRevenue,
+        actualRealizedRevenue,
         feedItems,
         feedConsumptionLogs,
         feedPurchaseLogs,

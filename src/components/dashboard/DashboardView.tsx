@@ -24,6 +24,9 @@ import {
   PlusCircle,
   BarChart3,
   Building2,
+  CheckCircle2,
+  Scale,
+  Calculator,
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -49,6 +52,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     isTabAllowed,
     totalAvailableTrays,
     totalPhysicalEggs,
+    totalGoodEggsCollected,
+    totalEggsSold,
+    inventoryRemaining,
+    hasSalesDiscrepancy,
+    potentialRevenue,
+    actualRealizedRevenue,
   } = useFarm();
 
   const todayStr = new Date().toISOString().split('T')[0];
@@ -253,6 +262,137 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* EGG RECONCILIATION & INVENTORY TRACKING MODULE */}
+      {hasPermission('viewInventoryMetrics') && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-700">
+                <Scale className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-sm text-slate-900 flex items-center gap-2">
+                  <span>Egg Reconciliation & Inventory Tracking</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Automated audit comparing recorded harvest production, sales dispatches, and potential revenue.
+                </p>
+              </div>
+            </div>
+
+            {hasSalesDiscrepancy ? (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold animate-pulse">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                <span>DISCREPANCY ALERT</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-bold">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>LOGS BALANCED</span>
+              </span>
+            )}
+          </div>
+
+          {/* Prominent Yellow/Amber Discrepancy Warning Label if Sales > Production */}
+          {hasSalesDiscrepancy && (
+            <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-center gap-3 text-amber-950 text-xs font-bold shadow-xs animate-in fade-in">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+              <div className="flex-1">
+                <span className="text-amber-900 font-extrabold uppercase tracking-wide">
+                  Discrepancy Warning:
+                </span>{' '}
+                <span>Sales exceed recorded production. Please check logs.</span>
+                <p className="text-[11px] font-normal text-amber-800 mt-0.5">
+                  Total Eggs Sold ({formatNumber(totalEggsSold)} pcs) is greater than Total Good Eggs Collected ({formatNumber(totalGoodEggsCollected)} pcs).
+                </p>
+              </div>
+              <button
+                onClick={() => onNavigate('record-check')}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold shrink-0 transition-colors cursor-pointer"
+              >
+                Inspect Logs
+              </button>
+            </div>
+          )}
+
+          {/* 4 RECONCILIATION KPI CARDS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            {/* 1. Total Good Eggs Collected */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <div className="text-xs text-slate-500 font-medium flex items-center justify-between">
+                <span>🥚 Total Good Eggs Collected</span>
+                <Egg className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="text-xl font-bold font-heading text-slate-900">
+                {formatNumber(totalGoodEggsCollected)} <span className="text-xs font-semibold text-slate-500">pcs</span>
+              </div>
+              <div className="text-[11px] text-slate-500 font-medium">
+                ~{formatNumber(Math.floor(totalGoodEggsCollected / 30))} trays usable harvest
+              </div>
+            </div>
+
+            {/* 2. Total Eggs Sold */}
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+              <div className="text-xs text-slate-500 font-medium flex items-center justify-between">
+                <span>🛒 Total Eggs Sold</span>
+                <ShoppingCart className="w-4 h-4 text-sky-600" />
+              </div>
+              <div className="text-xl font-bold font-heading text-slate-900">
+                {formatNumber(totalEggsSold)} <span className="text-xs font-semibold text-slate-500">pcs</span>
+              </div>
+              <div className="text-[11px] text-slate-500 font-medium">
+                ~{formatNumber(Math.floor(totalEggsSold / 30))} trays dispatched
+              </div>
+            </div>
+
+            {/* 3. Inventory Remaining (Calculation Card) */}
+            <div className={`p-3.5 rounded-xl border space-y-1 ${
+              inventoryRemaining < 0
+                ? 'bg-rose-50 border-rose-200'
+                : 'bg-emerald-50/80 border-emerald-200'
+            }`}>
+              <div className="text-xs font-medium flex items-center justify-between text-slate-600">
+                <span>📊 Inventory Remaining</span>
+                <PackageCheck className="w-4 h-4 text-emerald-700" />
+              </div>
+              <div className={`text-xl font-bold font-heading ${
+                inventoryRemaining < 0 ? 'text-rose-700' : 'text-emerald-800'
+              }`}>
+                {formatNumber(inventoryRemaining)} <span className="text-xs font-semibold text-slate-600">pcs</span>
+              </div>
+              <div className="text-[11px] text-slate-600 font-medium">
+                {inventoryRemaining < 0
+                  ? 'Deficit in inventory count'
+                  : `~${formatNumber(Math.floor(inventoryRemaining / 30))} trays (${inventoryRemaining % 30} loose) in stock`}
+              </div>
+            </div>
+
+            {/* 4. Financial Overview: Potential Revenue vs Realized Revenue */}
+            <div className="p-3.5 bg-slate-900 text-white rounded-xl border border-slate-800 space-y-1.5">
+              <div className="text-xs text-slate-400 font-medium flex items-center justify-between">
+                <span>💰 Revenue Realization</span>
+                <Calculator className="w-4 h-4 text-emerald-400" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Potential Revenue:</span>
+                  <span className="font-bold text-amber-300 font-mono">{formatCurrency(potentialRevenue)}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-slate-400">Realized Revenue:</span>
+                  <span className="font-bold text-emerald-400 font-mono">{formatCurrency(actualRealizedRevenue)}</span>
+                </div>
+              </div>
+              <div className="text-[10px] text-slate-400 pt-0.5 border-t border-slate-800 truncate">
+                {potentialRevenue > 0
+                  ? `${((actualRealizedRevenue / potentialRevenue) * 100).toFixed(1)}% revenue realized from harvest`
+                  : '100% revenue realization'}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
