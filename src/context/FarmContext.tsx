@@ -1245,9 +1245,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         })
       );
     }
-        })
-      );
-    }
   };
 
   const recordFeedConsumption = (log: Omit<FeedConsumptionLog, 'id' | 'cost' | 'createdAt'>) => {
@@ -1474,9 +1471,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     return newSale;
-    }
-
-    return newSale;
   };
 
   const updateSale = (id: string, updates: Partial<FarmSale>) => {
@@ -1612,9 +1606,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return { ...b, currentBalance: nextBal };
           }
           return b;
-        })
-      );
-    }
         })
       );
     }
