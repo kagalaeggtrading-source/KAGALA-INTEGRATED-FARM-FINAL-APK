@@ -318,7 +318,17 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [internalTransfers, setInternalTransfers] = useState<InternalTransfer[]>(() =>
     loadStorage('internal_transfers', [])
   );
-  const [cashOnHand, setCashOnHand] = useState<number>(() => loadStorage('cash_on_hand', 0));
+
+  // Dynamic Cash on Hand Calculation:
+  // Formula: (Total Cash Payments Received + Total Bank Transferred Received) - (Total Farm Expenses Paid out + Total Completed Bank Deposits)
+  const cashOnHand = useMemo(() => {
+    const totalPaymentsReceived = payments.reduce((sum, p) => sum + p.amount, 0);
+    const totalExpensesPaidOut = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalCompletedBankDeposits = bankDeposits.reduce((sum, d) => sum + d.amount, 0);
+
+    return totalPaymentsReceived - totalExpensesPaidOut - totalCompletedBankDeposits;
+  }, [payments, expenses, bankDeposits]);
+
   const [trashItems, setTrashItems] = useState<TrashItem[]>(() =>
     loadStorage('trash_items', [])
   );
@@ -417,12 +427,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setSyncStatus('connected');
         }
       }),
-      subscribeDoc<{ amount: number }>('farm_finances', 'cash', remoteCash => {
-        if (remoteCash && typeof remoteCash.amount === 'number') {
-          setCashOnHand(remoteCash.amount);
-          setLastSyncedAt(new Date());
-          setSyncStatus('connected');
-        }
+      subscribeDoc<{ amount: number }>('farm_finances', 'cash', () => {
+        setLastSyncedAt(new Date());
+        setSyncStatus('connected');
       }),
       subscribeCollection<FarmLocation>('farms', items => {
         if (items.length > 0) setFarms(items);
@@ -1225,14 +1232,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setExpenses(prev => [...prev, newExpense]);
     syncSaveDoc('expenses', newExpense.id, newExpense);
 
-    // Deduct cash or bank account
-    if (log.paymentAccount === 'cash_on_hand') {
-      setCashOnHand(prev => {
-        const next = Math.max(0, prev - log.totalCost);
-        syncSaveDoc('farm_finances', 'cash', { amount: next, updatedAt: new Date().toISOString() });
-        return next;
-      });
-    } else if (log.bankAccountId) {
+    // Deduct bank account balance if paid from bank
+    if (log.paymentAccount !== 'cash_on_hand' && log.bankAccountId) {
       setBankAccounts(prev =>
         prev.map(b => {
           if (b.id === log.bankAccountId) {
@@ -1241,6 +1242,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return { ...b, currentBalance: nextBal };
           }
           return b;
+        })
+      );
+    }
         })
       );
     }
@@ -1467,14 +1471,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
       setPayments(prev => [...prev, newPayment]);
       syncSaveDoc('payments', newPayment.id, newPayment);
+    }
 
-      if (newPayment.accountReceivedInto === 'cash_on_hand') {
-        setCashOnHand(prev => {
-          const next = prev + saleData.paidAmount;
-          syncSaveDoc('farm_finances', 'cash', { amount: next, updatedAt: new Date().toISOString() });
-          return next;
-        });
-      }
+    return newSale;
     }
 
     return newSale;
@@ -1529,14 +1528,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setPayments(prev => [...prev, newPayment]);
     syncSaveDoc('payments', newPayment.id, newPayment);
 
-    // Adjust Cash on Hand or Bank Balance
-    if (newPayment.accountReceivedInto === 'cash_on_hand') {
-      setCashOnHand(prev => {
-        const next = prev + newPayment.amount;
-        syncSaveDoc('farm_finances', 'cash', { amount: next, updatedAt: new Date().toISOString() });
-        return next;
-      });
-    } else if (newPayment.bankAccountId) {
+    // Adjust Bank Balance if received into bank account
+    if (newPayment.accountReceivedInto !== 'cash_on_hand' && newPayment.bankAccountId) {
       setBankAccounts(prev =>
         prev.map(b => {
           if (b.id === newPayment.bankAccountId) {
@@ -1609,14 +1602,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setExpenses(prev => [...prev, newExpense]);
     syncSaveDoc('expenses', newExpense.id, newExpense);
 
-    // Deduct from cash or bank
-    if (newExpense.paymentAccount === 'cash_on_hand') {
-      setCashOnHand(prev => {
-        const next = Math.max(0, prev - newExpense.amount);
-        syncSaveDoc('farm_finances', 'cash', { amount: next, updatedAt: new Date().toISOString() });
-        return next;
-      });
-    } else if (newExpense.bankAccountId) {
+    // Deduct from bank account balance if paid from bank
+    if (newExpense.paymentAccount !== 'cash_on_hand' && newExpense.bankAccountId) {
       setBankAccounts(prev =>
         prev.map(b => {
           if (b.id === newExpense.bankAccountId) {
@@ -1625,6 +1612,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             return { ...b, currentBalance: nextBal };
           }
           return b;
+        })
+      );
+    }
         })
       );
     }
@@ -1727,15 +1717,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       })
     );
 
-    // If source is Cash on Hand, deduct cash on hand
-    if (depositData.sourceAccount === 'Cash on Hand') {
-      setCashOnHand(prev => {
-        const next = Math.max(0, prev - depositData.amount);
-        syncSaveDoc('farm_finances', 'cash', { amount: next, updatedAt: new Date().toISOString() });
-        return next;
-      });
-    }
-
     return newDeposit;
   };
 
@@ -1761,7 +1742,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const setCashOnHandManualAdjustment = (newAmount: number, reason: string) => {
-    setCashOnHand(newAmount);
     syncSaveDoc('farm_finances', 'cash', { amount: newAmount, updatedAt: new Date().toISOString(), reason });
   };
 
@@ -2078,7 +2058,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (Array.isArray(data.bankAccounts)) setBankAccounts(data.bankAccounts);
       if (Array.isArray(data.bankDeposits)) setBankDeposits(data.bankDeposits);
       if (Array.isArray(data.internalTransfers)) setInternalTransfers(data.internalTransfers);
-      if (typeof data.cashOnHand === 'number') setCashOnHand(data.cashOnHand);
       if (Array.isArray(data.trashItems)) setTrashItems(data.trashItems);
       return true;
     } catch (err) {
@@ -2109,7 +2088,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setBankAccounts([]);
     setBankDeposits([]);
     setInternalTransfers([]);
-    setCashOnHand(0);
     setTrashItems([]);
     setAuditReport(null);
 

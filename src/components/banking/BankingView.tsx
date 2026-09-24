@@ -56,21 +56,15 @@ export const BankingView: React.FC = () => {
   const [depositedBy, setDepositedBy] = useState('');
   const [depositNotes, setDepositNotes] = useState('');
 
-  // Computed Financial Totals
+  // Computed Financial Totals using Accounting Formula:
+  // Cash on Hand = (Total Cash Payments + Total Bank Transfers) - (Total Farm Expenses + Total Completed Bank Deposits)
+  const totalPaymentsReceived = payments.reduce((s, p) => s + p.amount, 0);
+  const totalFarmExpenses = expenses.reduce((s, e) => s + e.amount, 0);
+  const totalCompletedBankDeposits = bankDeposits.reduce((s, d) => s + d.amount, 0);
+
+  const dynamicCashOnHand = totalPaymentsReceived - totalFarmExpenses - totalCompletedBankDeposits;
   const totalBankBalance = bankAccounts.reduce((s, b) => s + b.currentBalance, 0);
-  const totalFarmLiquidity = cashOnHand + totalBankBalance;
-
-  const totalCashCollected = payments
-    .filter(p => p.accountReceivedInto === 'cash_on_hand')
-    .reduce((s, p) => s + p.amount, 0);
-
-  const totalCashExpenses = expenses
-    .filter(e => e.paymentAccount === 'cash_on_hand')
-    .reduce((s, e) => s + e.amount, 0);
-
-  const totalDepositedFromCash = bankDeposits
-    .filter(d => d.sourceAccount === 'Cash on Hand')
-    .reduce((s, d) => s + d.amount, 0);
+  const totalFarmLiquidity = dynamicCashOnHand + totalBankBalance;
 
   const handleAddAccount = (e: React.FormEvent) => {
     e.preventDefault();
@@ -105,9 +99,9 @@ export const BankingView: React.FC = () => {
       return;
     }
 
-    if (sourceAccount === 'Cash on Hand' && depositAmount > cashOnHand) {
+    if (sourceAccount === 'Cash on Hand' && depositAmount > dynamicCashOnHand && dynamicCashOnHand > 0) {
       alert(
-        `Insufficient Cash on Hand! Current Cash on Hand is ₱${cashOnHand.toLocaleString()}, but trying to deposit ₱${depositAmount.toLocaleString()}.`
+        `Insufficient Cash on Hand! Current Cash on Hand is ₱${dynamicCashOnHand.toLocaleString()}, but trying to deposit ₱${depositAmount.toLocaleString()}.`
       );
       return;
     }
@@ -191,10 +185,10 @@ export const BankingView: React.FC = () => {
           <div className="text-xs text-slate-500 font-medium">Cash on Hand (Vault / Register)</div>
           <div
             className={`text-2xl font-bold font-heading mt-1 ${
-              cashOnHand < 0 ? 'text-rose-600' : 'text-emerald-700'
+              dynamicCashOnHand < 0 ? 'text-rose-600' : 'text-emerald-700'
             }`}
           >
-            {formatCurrency(cashOnHand)}
+            {formatCurrency(dynamicCashOnHand)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">Physical un-deposited currency</div>
         </div>
@@ -210,7 +204,7 @@ export const BankingView: React.FC = () => {
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
           <div className="text-xs text-slate-500 font-medium">Deposited to Date</div>
           <div className="text-2xl font-bold text-slate-800 font-heading mt-1">
-            {formatCurrency(totalDepositedFromCash)}
+            {formatCurrency(totalCompletedBankDeposits)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">
             {bankDeposits.length} recorded bank deposit slips
