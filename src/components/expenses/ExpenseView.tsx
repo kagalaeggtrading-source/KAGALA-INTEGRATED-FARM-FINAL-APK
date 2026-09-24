@@ -6,34 +6,42 @@
 import React, { useState } from 'react';
 import { useFarm } from '../../context/FarmContext';
 import {
-  CreditCard,
-  PlusCircle,
   TrendingDown,
-  Calendar,
-  AlertTriangle,
-  Tag,
-  DollarSign,
+  PlusCircle,
   FileText,
+  Calendar,
+  CreditCard,
+  Building,
+  DollarSign,
   Trash2,
+  Edit2,
+  X,
+  Save,
 } from 'lucide-react';
-import { EXPENSE_CATEGORIES, formatCurrency, formatNumber } from '../../constants';
+import { formatCurrency, EXPENSE_CATEGORIES } from '../../constants';
 import { ExpenseCategory, FarmExpense } from '../../types';
 
 export const ExpenseView: React.FC = () => {
   const {
     expenses,
     addExpense,
+    updateExpense,
     deleteExpense,
-    cashOnHand,
     bankAccounts,
+    cashOnHand,
+    currentRole,
+    hasPermission,
   } = useFarm();
 
-  const [activeFilter, setActiveFilter] = useState<string>('all');
+  const canEdit = currentRole === 'admin' || currentRole === 'manager' || hasPermission('canLogExpenses');
+
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<FarmExpense | null>(null);
 
   // Form State
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [category, setCategory] = useState<ExpenseCategory>('Labor & Salaries');
+  const [category, setCategory] = useState<ExpenseCategory>('Feed');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState<number>(0);
   const [paymentAccount, setPaymentAccount] = useState<'cash_on_hand' | 'bank_account'>('cash_on_hand');
@@ -42,54 +50,71 @@ export const ExpenseView: React.FC = () => {
   const [referenceNumber, setReferenceNumber] = useState('');
   const [notes, setNotes] = useState('');
 
-  // Aggregations
-  const totalExpenses = expenses.reduce((s, e) => s + e.amount, 0);
-  const totalFeedExpenses = expenses
-    .filter(e => e.category === 'Feed')
-    .reduce((s, e) => s + e.amount, 0);
-  const totalLaborExpenses = expenses
-    .filter(e => e.category === 'Labor & Salaries')
-    .reduce((s, e) => s + e.amount, 0);
-  const totalUtilitiesExpenses = expenses
-    .filter(e => e.category === 'Water' || e.category === 'Electricity')
-    .reduce((s, e) => s + e.amount, 0);
+  const totalExpenseAmount = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   const filteredExpenses = expenses.filter(
-    e => activeFilter === 'all' || e.category.toLowerCase() === activeFilter.toLowerCase()
+    e => selectedCategory === 'all' || e.category === selectedCategory
   );
 
-  const handleCreateExpense = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (amount <= 0 || !description.trim()) return;
-
-    if (paymentAccount === 'cash_on_hand' && amount > cashOnHand) {
-      if (
-        !confirm(
-          `Warning: Cash on Hand is ₱${cashOnHand.toLocaleString()}, but expense is ₱${amount.toLocaleString()}. Proceeding will result in a negative cash drawer. Continue?`
-        )
-      ) {
-        return;
-      }
-    }
-
-    addExpense({
-      date,
-      category,
-      description: description.trim(),
-      amount,
-      paymentAccount,
-      bankAccountId: paymentAccount === 'bank_account' ? bankAccountId : undefined,
-      supplierPayee: supplierPayee.trim() || undefined,
-      referenceNumber: referenceNumber.trim() || undefined,
-      notes: notes.trim() || undefined,
-    });
-
-    setShowAddModal(false);
+  const handleOpenAddModal = () => {
+    setEditingExpense(null);
+    setDate(new Date().toISOString().split('T')[0]);
+    setCategory('Feed');
     setDescription('');
     setAmount(0);
+    setPaymentAccount('cash_on_hand');
     setSupplierPayee('');
     setReferenceNumber('');
     setNotes('');
+    setShowAddModal(true);
+  };
+
+  const handleOpenEditModal = (exp: FarmExpense) => {
+    setEditingExpense(exp);
+    setDate(exp.date);
+    setCategory(exp.category);
+    setDescription(exp.description);
+    setAmount(exp.amount);
+    setPaymentAccount(exp.paymentAccount);
+    setBankAccountId(exp.bankAccountId || bankAccounts[0]?.id || '');
+    setSupplierPayee(exp.supplierPayee || '');
+    setReferenceNumber(exp.referenceNumber || '');
+    setNotes(exp.notes || '');
+    setShowAddModal(true);
+  };
+
+  const handleSaveExpense = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!description.trim() || amount <= 0) return;
+
+    if (editingExpense) {
+      updateExpense(editingExpense.id, {
+        date,
+        category,
+        description: description.trim(),
+        amount: Number(amount) || 0,
+        paymentAccount,
+        bankAccountId: paymentAccount === 'bank_account' ? bankAccountId : undefined,
+        supplierPayee: supplierPayee.trim() || undefined,
+        referenceNumber: referenceNumber.trim() || undefined,
+        notes: notes.trim() || undefined,
+      });
+    } else {
+      addExpense({
+        date,
+        category,
+        description: description.trim(),
+        amount: Number(amount) || 0,
+        paymentAccount,
+        bankAccountId: paymentAccount === 'bank_account' ? bankAccountId : undefined,
+        supplierPayee: supplierPayee.trim() || undefined,
+        referenceNumber: referenceNumber.trim() || undefined,
+        notes: notes.trim() || undefined,
+      });
+    }
+
+    setShowAddModal(false);
+    setEditingExpense(null);
   };
 
   return (
@@ -98,9 +123,9 @@ export const ExpenseView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-2xs">
         <div>
           <div className="flex items-center gap-2">
-            <CreditCard className="w-5 h-5 text-emerald-700" />
+            <TrendingDown className="w-5 h-5 text-rose-600" />
             <h2 className="text-xl font-bold font-heading text-slate-900">
-              Operational Expenses & Farm Disbursements
+              Farm Expense Management
             </h2>
           </div>
           <p className="text-xs text-slate-500 mt-1">
@@ -109,74 +134,34 @@ export const ExpenseView: React.FC = () => {
         </div>
 
         <button
-          onClick={() => {
-            if (bankAccounts.length > 0 && !bankAccountId) {
-              setBankAccountId(bankAccounts[0].id);
-            }
-            setShowAddModal(true);
-          }}
-          className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs shrink-0"
+          onClick={handleOpenAddModal}
+          className="flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs"
         >
           <PlusCircle className="w-4 h-4" />
-          <span>Record Farm Expense</span>
+          <span>Record New Expense</span>
         </button>
       </div>
 
-      {/* Aggregate Expense Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Total Farm Disbursements</div>
-          <div className="text-2xl font-bold text-slate-900 font-heading mt-1">
-            {formatCurrency(totalExpenses)}
-          </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">{expenses.length} voucher records</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Labor & Staff Salaries</div>
-          <div className="text-2xl font-bold text-slate-800 font-heading mt-1">
-            {formatCurrency(totalLaborExpenses)}
-          </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Farm workers & management</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Utilities (Power & Water)</div>
-          <div className="text-2xl font-bold text-slate-800 font-heading mt-1">
-            {formatCurrency(totalUtilitiesExpenses)}
-          </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Electricity, water pumps & lights</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Direct Feed Purchases</div>
-          <div className="text-2xl font-bold text-amber-700 font-heading mt-1">
-            {formatCurrency(totalFeedExpenses)}
-          </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Feed stock disbursement</div>
-        </div>
-      </div>
-
-      {/* Category Filter Chips */}
-      <div className="flex flex-wrap items-center gap-1.5">
+      {/* Expense Category Filter Pills */}
+      <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1">
         <button
-          onClick={() => setActiveFilter('all')}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors cursor-pointer ${
-            activeFilter === 'all'
-              ? 'bg-slate-900 text-white'
+          onClick={() => setSelectedCategory('all')}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+            selectedCategory === 'all'
+              ? 'bg-slate-900 text-white shadow-2xs'
               : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
           }`}
         >
-          All Categories
+          All Expenditures ({formatCurrency(totalExpenseAmount)})
         </button>
 
         {EXPENSE_CATEGORIES.map(cat => (
           <button
             key={cat}
-            onClick={() => setActiveFilter(cat)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors cursor-pointer ${
-              activeFilter.toLowerCase() === cat.toLowerCase()
-                ? 'bg-slate-900 text-white'
+            onClick={() => setSelectedCategory(cat)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+              selectedCategory === cat
+                ? 'bg-rose-700 text-white shadow-2xs'
                 : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
             }`}
           >
@@ -246,17 +231,31 @@ export const ExpenseView: React.FC = () => {
                         {formatCurrency(exp.amount)}
                       </td>
                       <td className="p-3 text-right">
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete expense ${exp.expenseNumber}?`)) {
-                              deleteExpense(exp.id);
-                            }
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                          title="Delete Expense"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          {canEdit && (
+                            <button
+                              onClick={() => handleOpenEditModal(exp)}
+                              className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                              title="Edit Expense Record"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {canEdit && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Delete expense ${exp.expenseNumber}?`)) {
+                                  deleteExpense(exp.id);
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Delete Expense"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -267,92 +266,93 @@ export const ExpenseView: React.FC = () => {
         )}
       </div>
 
-      {/* MODAL: RECORD EXPENSE */}
+      {/* MODAL: RECORD / EDIT EXPENSE */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="font-heading font-bold text-base text-slate-900">
-                Record Farm Operating Expense
+                {editingExpense ? `Edit Expense Record (${editingExpense.expenseNumber})` : 'Record Farm Operating Expense'}
               </h3>
               <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                onClick={() => {
+                  setShowAddModal(false);
+                  setEditingExpense(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateExpense} className="mt-4 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Expense Date *</label>
-                  <input
-                    type="date"
-                    required
-                    value={date}
-                    onChange={e => setDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Category *</label>
-                  <select
-                    value={category}
-                    onChange={e => setCategory(e.target.value as ExpenseCategory)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold"
-                  >
-                    {EXPENSE_CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>
-                        {cat}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
+            <form onSubmit={handleSaveExpense} className="space-y-4 text-xs pt-4">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Expense Description *</label>
+                <label className="block text-slate-700 font-semibold mb-1">Expense Date</label>
                 <input
-                  type="text"
+                  type="date"
                   required
-                  placeholder="e.g. Caretaker salary for 1st half of month"
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+                  value={date}
+                  onChange={e => setDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Amount (₱) *</label>
-                  <input
-                    type="number"
-                    min="1"
-                    required
-                    value={amount}
-                    onChange={e => setAmount(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-rose-700"
-                  />
-                </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Category</label>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value as ExpenseCategory)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium"
+                >
+                  {EXPENSE_CATEGORIES.map(c => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Paid From Account *</label>
-                  <select
-                    value={paymentAccount}
-                    onChange={e => setPaymentAccount(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold"
-                  >
-                    <option value="cash_on_hand">Cash on Hand (Vault)</option>
-                    <option value="bank_account">Bank Account</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Description / Particulars *</label>
+                <input
+                  type="text"
+                  required
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  placeholder="e.g. 10 bundles egg trays, electricity bill"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Amount (₱) *</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  min="0.01"
+                  value={amount}
+                  onChange={e => setAmount(parseFloat(e.target.value) || 0)}
+                  placeholder="0.00"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1">Disbursed From Account</label>
+                <select
+                  value={paymentAccount}
+                  onChange={e => setPaymentAccount(e.target.value as 'cash_on_hand' | 'bank_account')}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-medium"
+                >
+                  <option value="cash_on_hand">Cash on Hand (Vault)</option>
+                  {bankAccounts.length > 0 && <option value="bank_account">Bank Account Transfer / Check</option>}
+                </select>
               </div>
 
               {paymentAccount === 'bank_account' && (
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Select Bank Account *</label>
+                  <label className="block text-slate-700 font-semibold mb-1">Select Bank Account</label>
                   <select
                     value={bankAccountId}
                     onChange={e => setBankAccountId(e.target.value)}
@@ -360,60 +360,54 @@ export const ExpenseView: React.FC = () => {
                   >
                     {bankAccounts.map(b => (
                       <option key={b.id} value={b.id}>
-                        {b.bankName} ({b.maskedAccountNumber}) - Bal: {formatCurrency(b.currentBalance)}
+                        {b.bankName} - {b.accountName} ({formatCurrency(b.currentBalance)})
                       </option>
                     ))}
                   </select>
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Supplier / Payee</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Caramoan Agri Supply"
-                    value={supplierPayee}
-                    onChange={e => setSupplierPayee(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Official Receipt / Ref #</label>
-                  <input
-                    type="text"
-                    placeholder="OR-99120"
-                    value={referenceNumber}
-                    onChange={e => setReferenceNumber(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Notes</label>
-                <textarea
-                  rows={2}
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
+                <label className="block text-slate-700 font-semibold mb-1">Supplier / Payee</label>
+                <input
+                  type="text"
+                  value={supplierPayee}
+                  onChange={e => setSupplierPayee(e.target.value)}
+                  placeholder="Vendor name"
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <div>
+                <label className="block text-slate-700 font-semibold mb-1 font-mono">
+                  Receipt / Voucher Ref Number
+                </label>
+                <input
+                  type="text"
+                  value={referenceNumber}
+                  onChange={e => setReferenceNumber(e.target.value)}
+                  placeholder="OR / Ref #"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setEditingExpense(null);
+                  }}
+                  className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-semibold shadow-xs"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  Record Disbursement
+                  <Save className="w-4 h-4" />
+                  <span>{editingExpense ? 'Update Expense' : 'Save Expense'}</span>
                 </button>
               </div>
             </form>

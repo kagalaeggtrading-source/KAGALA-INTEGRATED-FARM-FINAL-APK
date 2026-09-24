@@ -28,7 +28,11 @@ export const EggProductionView: React.FC = () => {
     deleteEggProductionLog,
     flocks,
     houses,
+    currentRole,
+    hasPermission,
   } = useFarm();
+
+  const canEdit = currentRole === 'admin' || currentRole === 'manager' || hasPermission('canLogProduction');
 
   const [showLogModal, setShowLogModal] = useState(false);
   const [selectedLogForDetail, setSelectedLogForDetail] = useState<EggProductionLog | null>(null);
@@ -381,24 +385,28 @@ export const EggProductionView: React.FC = () => {
                       </td>
                       <td className="p-3 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handleEditClick(log)}
-                            className="p-1 text-slate-400 hover:text-emerald-600 rounded transition-colors cursor-pointer"
-                            title="Edit Record"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Move egg production record for ${log.date} to trash?`)) {
-                                deleteEggProductionLog(log.id);
-                              }
-                            }}
-                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors cursor-pointer"
-                            title="Move to Trash"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => handleEditClick(log)}
+                              className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                              title="Edit Record"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canEdit && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Move egg production record for ${log.date} to trash?`)) {
+                                  deleteEggProductionLog(log.id);
+                                }
+                              }}
+                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Move to Trash"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

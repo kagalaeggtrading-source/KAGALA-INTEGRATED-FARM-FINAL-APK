@@ -10,13 +10,11 @@ import {
   PlusCircle,
   Phone,
   MapPin,
-  FileText,
-  DollarSign,
   Eye,
+  Edit2,
   Trash2,
-  Calendar,
-  CreditCard,
-  Building,
+  X,
+  Save,
 } from 'lucide-react';
 import { formatCurrency } from '../../constants';
 import { Customer, CustomerType } from '../../types';
@@ -25,13 +23,19 @@ export const CustomersView: React.FC = () => {
   const {
     customers,
     addCustomer,
+    updateCustomer,
     deleteCustomer,
     sales,
     payments,
+    currentRole,
+    hasPermission,
   } = useFarm();
+
+  const canEdit = currentRole === 'admin' || currentRole === 'manager' || hasPermission('canManageSystem');
 
   const [filterType, setFilterType] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
 
   // Form State
@@ -66,33 +70,68 @@ export const CustomersView: React.FC = () => {
     c => filterType === 'all' || c.customerType.toLowerCase() === filterType.toLowerCase()
   );
 
-  const handleCreateCustomer = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-
-    const customerCode = 'CUST-' + (customers.length + 1).toString().padStart(3, '0');
-
-    addCustomer({
-      customerCode,
-      name: name.trim(),
-      businessName: businessName.trim() || undefined,
-      contactNumber: contactNumber.trim(),
-      address: address.trim(),
-      customerType,
-      priceLevel,
-      creditTermsDays: Number(creditTermsDays) || 0,
-      creditLimit: Number(creditLimit) || 0,
-      notes: notes.trim() || undefined,
-    });
-
-    setShowAddModal(false);
+  const handleOpenAddModal = () => {
+    setEditingCustomer(null);
     setName('');
     setBusinessName('');
     setContactNumber('');
     setAddress('');
+    setCustomerType('Wholesale');
+    setPriceLevel('Standard');
     setCreditLimit(0);
     setCreditTermsDays(0);
     setNotes('');
+    setShowAddModal(true);
+  };
+
+  const handleOpenEditModal = (cust: Customer) => {
+    setEditingCustomer(cust);
+    setName(cust.name);
+    setBusinessName(cust.businessName || '');
+    setContactNumber(cust.contactNumber || '');
+    setAddress(cust.address || '');
+    setCustomerType(cust.customerType || 'Wholesale');
+    setPriceLevel(cust.priceLevel || 'Standard');
+    setCreditTermsDays(cust.creditTermsDays || 0);
+    setCreditLimit(cust.creditLimit || 0);
+    setNotes(cust.notes || '');
+    setShowAddModal(true);
+  };
+
+  const handleSaveCustomer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    if (editingCustomer) {
+      updateCustomer(editingCustomer.id, {
+        name: name.trim(),
+        businessName: businessName.trim() || undefined,
+        contactNumber: contactNumber.trim(),
+        address: address.trim(),
+        customerType,
+        priceLevel,
+        creditTermsDays: Number(creditTermsDays) || 0,
+        creditLimit: Number(creditLimit) || 0,
+        notes: notes.trim() || undefined,
+      });
+    } else {
+      const customerCode = 'CUST-' + (customers.length + 1).toString().padStart(3, '0');
+      addCustomer({
+        customerCode,
+        name: name.trim(),
+        businessName: businessName.trim() || undefined,
+        contactNumber: contactNumber.trim(),
+        address: address.trim(),
+        customerType,
+        priceLevel,
+        creditTermsDays: Number(creditTermsDays) || 0,
+        creditLimit: Number(creditLimit) || 0,
+        notes: notes.trim() || undefined,
+      });
+    }
+
+    setShowAddModal(false);
+    setEditingCustomer(null);
   };
 
   return (
@@ -112,7 +151,7 @@ export const CustomersView: React.FC = () => {
         </div>
 
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={handleOpenAddModal}
           className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs"
         >
           <PlusCircle className="w-4 h-4" />
@@ -131,70 +170,61 @@ export const CustomersView: React.FC = () => {
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Total Accounts Receivable</div>
+          <div className="text-xs text-slate-500 font-medium">Total Receivables (A/R)</div>
           <div className="text-2xl font-bold text-rose-600 font-heading mt-1">
             {formatCurrency(totalReceivables)}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Uncollected credit balances</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Outstanding customer debt</div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Cumulative Gross Sales</div>
+          <div className="text-xs text-slate-500 font-medium">Lifetime Revenue Billed</div>
           <div className="text-2xl font-bold text-emerald-700 font-heading mt-1">
             {formatCurrency(totalSalesAll)}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Across all client accounts</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Across all issued invoices</div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Credit Customers</div>
-          <div className="text-2xl font-bold text-amber-700 font-heading mt-1">
-            {customers.filter(c => c.creditTermsDays > 0).length}
+          <div className="text-xs text-slate-500 font-medium">Overdue / Credit Risk</div>
+          <div className="text-2xl font-bold text-slate-800 font-heading mt-1">
+            {customers.filter(c => getCustomerMetrics(c.id).outstandingBalance > 0).length}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Approved term accounts</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Accounts with open balance</div>
         </div>
       </div>
 
-      {/* Customer Category Filter */}
-      <div className="flex flex-wrap items-center gap-2">
-        {['all', 'Wholesale', 'Retail', 'Suki/Regular', 'Restaurant', 'Store', 'Reseller'].map(t => (
-          <button
-            key={t}
-            onClick={() => setFilterType(t)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors cursor-pointer ${
-              filterType.toLowerCase() === t.toLowerCase()
-                ? 'bg-slate-900 text-white'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      {/* Customers Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      {/* Customer Directory Table */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden space-y-3">
+        <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="font-heading font-bold text-sm text-slate-900">
-            Customer Directory ({filteredCustomers.length})
+            Customer Directory & Credit Terms ({filteredCustomers.length})
           </h3>
-          <span className="text-xs text-slate-500">Live updated balances</span>
+
+          <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 sm:pb-0">
+            {['all', 'Wholesale', 'Retail', 'Suki/Regular', 'Reseller', 'Restaurant', 'Store'].map(type => (
+              <button
+                key={type}
+                onClick={() => setFilterType(type)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+                  filterType.toLowerCase() === type.toLowerCase()
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                {type === 'all' ? 'All Buyers' : type}
+              </button>
+            ))}
+          </div>
         </div>
 
         {filteredCustomers.length === 0 ? (
           <div className="p-12 text-center text-slate-400 text-xs">
             <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <p className="font-medium text-slate-600">No customer accounts registered</p>
+            <p className="font-medium text-slate-600">No customer profiles found</p>
             <p className="mt-1 text-slate-400 max-w-sm mx-auto">
-              Add your egg wholesalers, bakery clients, market vendors, and suki buyers to track deliveries and credit.
+              Register buyers, wholesale stores, and suki customers to track sales invoices and credit balances.
             </p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="mt-4 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Register First Buyer</span>
-            </button>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -274,22 +304,36 @@ export const CustomersView: React.FC = () => {
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => setSelectedCustomer(cust)}
-                            className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
+                            className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors cursor-pointer"
                             title="View Statement of Account"
                           >
                             <Eye className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => {
-                              if (confirm(`Delete customer ${cust.name}?`)) {
-                                deleteCustomer(cust.id);
-                              }
-                            }}
-                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                            title="Delete Customer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+
+                          {/* Edit Customer Button (Admin/Manager only) */}
+                          {canEdit && (
+                            <button
+                              onClick={() => handleOpenEditModal(cust)}
+                              className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                              title="Edit Customer Profile"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                          )}
+
+                          {canEdit && (
+                            <button
+                              onClick={() => {
+                                if (confirm(`Move customer ${cust.name} to trash?`)) {
+                                  deleteCustomer(cust.id);
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                              title="Delete Customer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -301,101 +345,104 @@ export const CustomersView: React.FC = () => {
         )}
       </div>
 
-      {/* MODAL: REGISTER CUSTOMER */}
+      {/* Add / Edit Customer Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
-              <h3 className="font-heading font-bold text-base text-slate-900">
-                Register Customer Account
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-heading font-bold text-sm">
+                  {editingCustomer ? `Edit Customer Profile (${editingCustomer.customerCode})` : 'Register New Customer Account'}
+                </h3>
+              </div>
               <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                onClick={() => {
+                  setShowAddModal(false);
+                  setEditingCustomer(null);
+                }}
+                className="p-1 text-slate-400 hover:text-white rounded"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateCustomer} className="mt-4 space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Customer / Contact Name *</label>
+            <form onSubmit={handleSaveCustomer} className="p-5 space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-700 mb-1">Customer Full Name *</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Maria Santos"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+                    placeholder="e.g. Maria Santos"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600 font-semibold"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Business / Store Name</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Store / Business Name</label>
                   <input
                     type="text"
-                    placeholder="e.g. Santos Egg Wholesaler"
                     value={businessName}
                     onChange={e => setBusinessName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+                    placeholder="e.g. Santos Egg Trading"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Customer Type</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Contact Phone Number</label>
+                  <input
+                    type="text"
+                    value={contactNumber}
+                    onChange={e => setContactNumber(e.target.value)}
+                    placeholder="0917XXXXXXX"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Customer Category</label>
                   <select
                     value={customerType}
-                    onChange={e => setCustomerType(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold"
+                    onChange={e => setCustomerType(e.target.value as CustomerType)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   >
-                    <option value="Wholesale">Wholesale Outlet</option>
-                    <option value="Retail">Retail Walk-in</option>
+                    <option value="Wholesale">Wholesale</option>
+                    <option value="Retail">Retail</option>
                     <option value="Suki/Regular">Suki / Regular</option>
+                    <option value="Reseller">Reseller</option>
                     <option value="Restaurant">Restaurant / Bakery</option>
-                    <option value="Store">Sari-Sari Store / Supermarket</option>
-                    <option value="Reseller">Reseller / Dealer</option>
+                    <option value="Store">Grocery / Store</option>
                     <option value="Delivery customer">Delivery Customer</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Contact Phone</label>
-                  <input
-                    type="text"
-                    placeholder="0917-000-0000"
-                    value={contactNumber}
-                    onChange={e => setContactNumber(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
-                  />
+                  <label className="block font-semibold text-slate-700 mb-1">Price Level tier</label>
+                  <select
+                    value={priceLevel}
+                    onChange={e => setPriceLevel(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  >
+                    <option value="Standard">Standard Retail</option>
+                    <option value="Wholesale">Wholesale Tier</option>
+                    <option value="Special Suki">Special Suki Discount</option>
+                  </select>
                 </div>
-              </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Delivery / Physical Address</label>
-                <input
-                  type="text"
-                  placeholder="Market stall #, Street, City"
-                  value={address}
-                  onChange={e => setAddress(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Credit Terms (Days)</label>
                   <input
                     type="number"
                     min="0"
-                    placeholder="0 for COD"
                     value={creditTermsDays}
                     onChange={e => setCreditTermsDays(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                    placeholder="0 for COD"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   />
-                  <span className="text-[10px] text-slate-400 mt-0.5 block">0 = Cash on delivery</span>
                 </div>
 
                 <div>
@@ -403,37 +450,54 @@ export const CustomersView: React.FC = () => {
                   <input
                     type="number"
                     min="0"
-                    placeholder="0 = Unlimited / COD"
                     value={creditLimit}
                     onChange={e => setCreditLimit(parseFloat(e.target.value) || 0)}
+                    placeholder="0 for unlimited"
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-700 mb-1">Delivery Address</label>
+                  <input
+                    type="text"
+                    value={address}
+                    onChange={e => setAddress(e.target.value)}
+                    placeholder="Street, Barangay, City/Town"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block font-semibold text-slate-700 mb-1">Notes / Internal Remarks</label>
+                  <textarea
+                    rows={2}
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    placeholder="Special delivery instructions, preferred sizes..."
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">Notes</label>
-                <textarea
-                  rows={2}
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setEditingCustomer(null);
+                  }}
+                  className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
+
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  Register Buyer
+                  <Save className="w-4 h-4" />
+                  <span>{editingCustomer ? 'Update Customer' : 'Save Customer'}</span>
                 </button>
               </div>
             </form>
@@ -441,146 +505,81 @@ export const CustomersView: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: CUSTOMER STATEMENT OF ACCOUNT */}
+      {/* View Customer Statement Modal */}
       {selectedCustomer && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 border border-slate-200 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
               <div>
-                <span className="text-xs font-mono font-bold text-emerald-700">
-                  {selectedCustomer.customerCode}
-                </span>
-                <h3 className="font-heading font-bold text-lg text-slate-900">
-                  {selectedCustomer.name}
-                </h3>
-                {selectedCustomer.businessName && (
-                  <p className="text-xs text-slate-500">{selectedCustomer.businessName}</p>
-                )}
+                <h3 className="font-heading font-bold text-sm">{selectedCustomer.name}</h3>
+                <p className="text-xs text-slate-400">
+                  {selectedCustomer.customerCode} • {selectedCustomer.customerType} Account
+                </p>
               </div>
               <button
                 onClick={() => setSelectedCustomer(null)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                className="p-1 text-slate-400 hover:text-white rounded"
               >
-                ✕
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="mt-4 space-y-4 text-xs">
-              {/* Summary Metrics */}
-              {(() => {
-                const metrics = getCustomerMetrics(selectedCustomer.id);
-                const custSales = sales.filter(s => s.customerId === selectedCustomer.id);
-                const custPayments = payments.filter(p => p.customerId === selectedCustomer.id);
+            <div className="p-5 flex-1 overflow-y-auto space-y-4 text-xs custom-scrollbar">
+              <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                <div>
+                  <span className="text-slate-500 text-[11px]">Contact:</span>
+                  <p className="font-bold text-slate-900">{selectedCustomer.contactNumber || '—'}</p>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-[11px]">Address:</span>
+                  <p className="font-bold text-slate-900 truncate">{selectedCustomer.address || '—'}</p>
+                </div>
+                <div>
+                  <span className="text-slate-500 text-[11px]">Outstanding Balance:</span>
+                  <p className="font-bold text-rose-700 text-sm">
+                    {formatCurrency(getCustomerMetrics(selectedCustomer.id).outstandingBalance)}
+                  </p>
+                </div>
+              </div>
 
-                return (
-                  <>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                        <span className="text-slate-400 text-[10px] block">Total Invoiced</span>
-                        <span className="text-base font-bold font-mono text-slate-800">
-                          {formatCurrency(metrics.totalPurchases)}
-                        </span>
-                      </div>
-                      <div className="p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                        <span className="text-emerald-700 text-[10px] block">Total Remitted</span>
-                        <span className="text-base font-bold font-mono text-emerald-800">
-                          {formatCurrency(metrics.totalPaid)}
-                        </span>
-                      </div>
-                      <div className="p-3 bg-rose-50 rounded-lg border border-rose-200">
-                        <span className="text-rose-700 text-[10px] block">Current Balance Due</span>
-                        <span className="text-base font-bold font-mono text-rose-700">
-                          {formatCurrency(metrics.outstandingBalance)}
-                        </span>
-                      </div>
-                    </div>
+              <div>
+                <h4 className="font-heading font-bold text-slate-800 mb-2">Invoice History</h4>
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-600 font-semibold">
+                      <tr>
+                        <th className="p-2">Invoice #</th>
+                        <th className="p-2">Date</th>
+                        <th className="p-2 text-right">Total</th>
+                        <th className="p-2 text-right">Paid</th>
+                        <th className="p-2 text-right">Balance</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {sales
+                        .filter(s => s.customerId === selectedCustomer.id)
+                        .map(s => (
+                          <tr key={s.id}>
+                            <td className="p-2 font-mono font-semibold text-slate-900">{s.saleNumber}</td>
+                            <td className="p-2 text-slate-600">{s.date}</td>
+                            <td className="p-2 text-right font-mono">{formatCurrency(s.total)}</td>
+                            <td className="p-2 text-right font-mono text-emerald-700">{formatCurrency(s.paidAmount)}</td>
+                            <td className="p-2 text-right font-mono font-bold text-rose-600">{formatCurrency(s.balance)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
 
-                    {/* Invoices List */}
-                    <div className="mt-4">
-                      <h4 className="font-heading font-bold text-xs text-slate-800 mb-2">
-                        Sales Invoices & Deliveries ({custSales.length})
-                      </h4>
-                      {custSales.length === 0 ? (
-                        <div className="text-center py-4 text-slate-400 border border-dashed rounded-lg">
-                          No sales recorded for this customer yet.
-                        </div>
-                      ) : (
-                        <div className="border border-slate-200 rounded-lg overflow-hidden">
-                          <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold">
-                              <tr>
-                                <th className="p-2">Invoice #</th>
-                                <th className="p-2">Date</th>
-                                <th className="p-2 text-right">Total (₱)</th>
-                                <th className="p-2 text-right">Paid (₱)</th>
-                                <th className="p-2 text-right font-bold text-rose-600">Balance</th>
-                                <th className="p-2 text-center">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium">
-                              {custSales.map(s => (
-                                <tr key={s.id}>
-                                  <td className="p-2 font-mono font-bold text-slate-800">{s.saleNumber}</td>
-                                  <td className="p-2 text-slate-600">{s.date}</td>
-                                  <td className="p-2 text-right font-mono">{formatCurrency(s.total)}</td>
-                                  <td className="p-2 text-right font-mono text-emerald-700">{formatCurrency(s.paidAmount)}</td>
-                                  <td className="p-2 text-right font-mono font-bold text-rose-600">{formatCurrency(s.balance)}</td>
-                                  <td className="p-2 text-center">
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100">
-                                      {s.paymentStatus}
-                                    </span>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Payments List */}
-                    <div className="mt-4">
-                      <h4 className="font-heading font-bold text-xs text-slate-800 mb-2">
-                        Payment Remittances ({custPayments.length})
-                      </h4>
-                      {custPayments.length === 0 ? (
-                        <div className="text-center py-4 text-slate-400 border border-dashed rounded-lg">
-                          No payments recorded yet.
-                        </div>
-                      ) : (
-                        <div className="border border-slate-200 rounded-lg overflow-hidden">
-                          <table className="w-full text-left">
-                            <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold">
-                              <tr>
-                                <th className="p-2">OR / Payment #</th>
-                                <th className="p-2">Date</th>
-                                <th className="p-2">Method</th>
-                                <th className="p-2">Account</th>
-                                <th className="p-2 text-right font-bold text-emerald-700">Amount (₱)</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium">
-                              {custPayments.map(p => (
-                                <tr key={p.id}>
-                                  <td className="p-2 font-mono font-bold text-slate-800">{p.paymentNumber}</td>
-                                  <td className="p-2 text-slate-600">{p.paymentDate}</td>
-                                  <td className="p-2">{p.paymentMethod}</td>
-                                  <td className="p-2 text-slate-600">
-                                    {p.accountReceivedInto === 'cash_on_hand' ? 'Cash on Hand' : 'Bank Account'}
-                                  </td>
-                                  <td className="p-2 text-right font-mono font-bold text-emerald-700">
-                                    {formatCurrency(p.amount)}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </>
-                );
-              })()}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setSelectedCustomer(null)}
+                className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold text-xs cursor-pointer"
+              >
+                Close Statement
+              </button>
             </div>
           </div>
         </div>
