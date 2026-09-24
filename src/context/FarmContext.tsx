@@ -320,13 +320,21 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   );
 
   // Dynamic Cash on Hand Calculation:
-  // Formula: (Total Cash Payments Received + Total Bank Transferred Received) - (Total Farm Expenses Paid out + Total Completed Bank Deposits)
+  // Formula: Cash on Hand = (Total Cash Payments Received) - (Total Farm Expenses Paid Out + Total Cash Deposited to Bank)
   const cashOnHand = useMemo(() => {
-    const totalPaymentsReceived = payments.reduce((sum, p) => sum + p.amount, 0);
-    const totalExpensesPaidOut = expenses.reduce((sum, e) => sum + e.amount, 0);
-    const totalCompletedBankDeposits = bankDeposits.reduce((sum, d) => sum + d.amount, 0);
+    const totalCashPaymentsReceived = payments
+      .filter(p => p.accountReceivedInto === 'cash_on_hand' || p.paymentMethod === 'Cash')
+      .reduce((sum, p) => sum + p.amount, 0);
 
-    return totalPaymentsReceived - totalExpensesPaidOut - totalCompletedBankDeposits;
+    const totalCashExpensesPaidOut = expenses
+      .filter(e => e.paymentAccount === 'cash_on_hand' || !e.paymentAccount)
+      .reduce((sum, e) => sum + e.amount, 0);
+
+    const totalCashDepositedToBank = bankDeposits
+      .filter(d => d.sourceAccount === 'Cash on Hand' || !d.sourceAccount)
+      .reduce((sum, d) => sum + d.amount, 0);
+
+    return totalCashPaymentsReceived - (totalCashExpensesPaidOut + totalCashDepositedToBank);
   }, [payments, expenses, bankDeposits]);
 
   const [trashItems, setTrashItems] = useState<TrashItem[]>(() =>
