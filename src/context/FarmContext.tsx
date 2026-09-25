@@ -441,6 +441,41 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ])
   );
 
+  // Universal Activity Audit Logger
+  const logActivity = (
+    actionType: ActionType,
+    module: string,
+    details: string,
+    actorRole?: UserRole
+  ) => {
+    const activeRole = actorRole || currentRole;
+    const roleTitle = activeRole === 'admin' ? 'Superuser Admin' : activeRole === 'manager' ? 'Farm Manager' : 'Farm Staff';
+    const now = new Date();
+    const formattedTimestamp = now.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }) + ' ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const newLog: ActivityLog = {
+      id: 'LOG-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).substring(2, 6),
+      timestamp: formattedTimestamp,
+      userRole: activeRole,
+      userName: roleTitle,
+      actionType,
+      module,
+      details,
+    };
+
+    setActivityLogs(prev => {
+      const updated = [newLog, ...prev];
+      saveStorage('activity_logs_v2', updated);
+      return updated;
+    });
+
+    syncSaveDoc('activity_logs', newLog.id, newLog);
+  };
+
   // Listen for auth state
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, user => {
@@ -1004,12 +1039,25 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setEggProductionLogs(prev => [...prev, newLog]);
     syncSaveDoc('egg_production_logs', newLog.id, newLog);
+
+    logActivity(
+      'CREATED',
+      'Egg Production',
+      `Recorded daily egg harvest for date ${log.date}: ${log.totalCollection} total eggs collected (${log.usableEggs} good eggs, ${log.rejects || 0} rejects)`
+    );
+
     return newLog;
   };
 
   const updateEggProductionLog = (id: string, updates: Partial<EggProductionLog>) => {
     setEggProductionLogs(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
     syncUpdateDoc('egg_production_logs', id, updates);
+
+    logActivity(
+      'EDITED',
+      'Egg Production',
+      `Updated egg collection record ${id} for date ${updates.date || 'harvest'}`
+    );
   };
 
   const deleteEggProductionLog = (id: string) => {
@@ -1023,6 +1071,15 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         target.date,
         target
       );
+      logActivity(
+        'DELETED',
+        'Egg Production',
+        `Moved egg collection record ${id} (${target.date}: ${target.totalCollection} eggs) to trash`
+      );
+    }
+    setEggProductionLogs(prev => prev.filter(p => p.id !== id));
+    syncDeleteDoc('egg_production_logs', id);
+  };
     }
     setEggProductionLogs(prev => prev.filter(p => p.id !== id));
     syncDeleteDoc('egg_production_logs', id);
@@ -1363,12 +1420,25 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setSupplyItems(prev => [...prev, newItem]);
     syncSaveDoc('supply_items', newItem.id, newItem);
+
+    logActivity(
+      'CREATED',
+      'Supplies & Pest Control',
+      `Added supply item: ${newItem.name} (${newItem.category.toUpperCase()}) - ${newItem.quantity} ${newItem.unit}`
+    );
+
     return newItem;
   };
 
   const updateSupplyItem = (id: string, updates: Partial<SupplyItem>) => {
     setSupplyItems(prev => prev.map(s => (s.id === id ? { ...s, ...updates } : s)));
     syncUpdateDoc('supply_items', id, updates);
+
+    logActivity(
+      'EDITED',
+      'Supplies & Pest Control',
+      `Updated supply item ${id}`
+    );
   };
 
   const deleteSupplyItem = (id: string) => {
@@ -1381,6 +1451,17 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         `Qty: ${target.quantity} ${target.unit}`,
         undefined,
         target
+      );
+
+      logActivity(
+        'DELETED',
+        'Supplies & Pest Control',
+        `Moved supply item ${target.name} (${target.category.toUpperCase()}) to trash`
+      );
+    }
+    setSupplyItems(prev => prev.filter(s => s.id !== id));
+    syncDeleteDoc('supply_items', id);
+  };
       );
     }
     setSupplyItems(prev => prev.filter(s => s.id !== id));
@@ -1442,12 +1523,25 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setCustomers(prev => [...prev, newCust]);
     syncSaveDoc('customers', newCust.id, newCust);
+
+    logActivity(
+      'CREATED',
+      'Customer Management',
+      `Registered new customer profile: ${newCust.name} (${newCust.customerCode})`
+    );
+
     return newCust;
   };
 
   const updateCustomer = (id: string, updates: Partial<Customer>) => {
     setCustomers(prev => prev.map(c => (c.id === id ? { ...c, ...updates } : c)));
     syncUpdateDoc('customers', id, updates);
+
+    logActivity(
+      'EDITED',
+      'Customer Management',
+      `Updated customer profile ${id}: ${updates.name ? `Name changed to "${updates.name}"` : 'Updated customer contact/credit details'}`
+    );
   };
 
   const deleteCustomer = (id: string) => {
@@ -1460,6 +1554,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         `${target.customerType} • ${target.contactNumber}`,
         undefined,
         target
+      );
+
+      logActivity(
+        'DELETED',
+        'Customer Management',
+        `Moved customer profile ${target.name} (${target.customerCode}) to trash`
       );
     }
     setCustomers(prev => prev.filter(c => c.id !== id));
@@ -1522,6 +1622,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSales(prev => [...prev, newSale]);
     syncSaveDoc('sales', newSale.id, newSale);
 
+    logActivity(
+      'CREATED',
+      'Sales & Invoicing',
+      `Issued sales invoice ${newSale.saleNumber} for ${newSale.customerName}: ₱${newSale.total.toLocaleString()} (${newSale.paymentMethod || 'Cash'})`
+    );
+
     // If paidAmount > 0, record corresponding payment automatically
     if (saleData.paidAmount > 0) {
       const payNum = 'PAY-' + Date.now().toString().slice(-6);
@@ -1563,6 +1669,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
       return s;
     }));
+
+    logActivity(
+      'EDITED',
+      'Sales & Invoicing',
+      `Updated sales invoice ${id}: ${updates.customerName ? `Buyer name updated to "${updates.customerName}"` : 'Invoice details modified'}`
+    );
   };
 
   const deleteSale = (id: string) => {
@@ -1576,12 +1688,18 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         target.date,
         target
       );
+
+      logActivity(
+        'DELETED',
+        'Sales & Invoicing',
+        `Moved sales invoice ${target.saleNumber} (${target.customerName}) to trash`
+      );
     }
     setSales(prev => prev.filter(s => s.id !== id));
     syncDeleteDoc('sales', id);
   };
 
-  // Customer Payment Operations
+    // Customer Payment Operations
   const addPayment = (paymentData: Omit<CustomerPayment, 'id' | 'paymentNumber' | 'createdAt'>): CustomerPayment => {
     const paymentNumber = 'PAY-' + (payments.length + 1).toString().padStart(4, '0');
     const newPayment: CustomerPayment = {
@@ -1593,6 +1711,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     setPayments(prev => [...prev, newPayment]);
     syncSaveDoc('payments', newPayment.id, newPayment);
+
+    logActivity(
+      'CREATED',
+      'Customer Payments',
+      `Logged remittance ${newPayment.paymentNumber} (${newPayment.customerName}): ₱${newPayment.amount.toLocaleString()} via ${newPayment.paymentMethod}`
+    );
 
     // Adjust Bank Balance if received into bank account
     if (newPayment.accountReceivedInto !== 'cash_on_hand' && newPayment.bankAccountId) {
@@ -1637,6 +1761,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updatePayment = (id: string, updates: Partial<CustomerPayment>) => {
     setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
     syncUpdateDoc('payments', id, updates);
+
+    logActivity(
+      'EDITED',
+      'Customer Payments',
+      `Updated remittance record ${id}`
+    );
   };
 
   const deletePayment = (id: string) => {
@@ -1649,6 +1779,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         `Amount: ₱${target.amount.toLocaleString()} • Method: ${target.paymentMethod}`,
         target.paymentDate,
         target
+      );
+
+      logActivity(
+        'DELETED',
+        'Customer Payments',
+        `Moved remittance record ${target.paymentNumber} (${target.customerName}) to trash`
       );
     }
     setPayments(prev => prev.filter(p => p.id !== id));
@@ -1667,6 +1803,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     setExpenses(prev => [...prev, newExpense]);
     syncSaveDoc('expenses', newExpense.id, newExpense);
+
+    logActivity(
+      'CREATED',
+      'Expense Management',
+      `Recorded expense voucher ${newExpense.expenseNumber} (${newExpense.category}): ${newExpense.description} (₱${newExpense.amount.toLocaleString()})`
+    );
 
     // Deduct from bank account balance if paid from bank
     if (newExpense.paymentAccount !== 'cash_on_hand' && newExpense.bankAccountId) {
@@ -1688,6 +1830,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateExpense = (id: string, updates: Partial<FarmExpense>) => {
     setExpenses(prev => prev.map(e => (e.id === id ? { ...e, ...updates } : e)));
     syncUpdateDoc('expenses', id, updates);
+
+    logActivity(
+      'EDITED',
+      'Expense Management',
+      `Updated expense voucher ${id}: ${updates.description || 'vouchers details modified'}`
+    );
   };
 
   const deleteExpense = (id: string) => {
@@ -1700,6 +1848,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         `${target.description} • ₱${target.amount.toLocaleString()}`,
         target.date,
         target
+      );
+
+      logActivity(
+        'DELETED',
+        'Expense Management',
+        `Moved expense voucher ${target.expenseNumber} (${target.category}) to trash`
       );
     }
     setExpenses(prev => prev.filter(e => e.id !== id));
@@ -1768,6 +1922,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setBankDeposits(prev => [...prev, newDeposit]);
     syncSaveDoc('bank_deposits', newDeposit.id, newDeposit);
 
+    logActivity(
+      'CREATED',
+      'Bank Deposits',
+      `Recorded bank deposit ${newDeposit.depositNumber} to ${newDeposit.bankName}: ₱${newDeposit.amount.toLocaleString()} (${newDeposit.depositType})`
+    );
+
     // Increase target bank account
     setBankAccounts(prev =>
       prev.map(b => {
@@ -1779,6 +1939,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return b;
       })
     );
+
+    return newDeposit;
 
     return newDeposit;
   };
@@ -2162,39 +2324,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   };
 
-  // Activity Log Helper
-  const logActivity = (
-    actionType: ActionType,
-    module: string,
-    details: string,
-    actorRole?: UserRole
-  ) => {
-    const activeRole = actorRole || currentRole;
-    const roleTitle = activeRole === 'admin' ? 'Superuser Admin' : activeRole === 'manager' ? 'Farm Manager' : 'Farm Staff';
-    const now = new Date();
-    const formattedTimestamp = now.toLocaleDateString('en-PH', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    }) + ' ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-    const newLog: ActivityLog = {
-      id: 'LOG-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).substring(2, 6),
-      timestamp: formattedTimestamp,
-      userRole: activeRole,
-      userName: roleTitle,
-      actionType,
-      module,
-      details,
-    };
-
-    setActivityLogs(prev => {
-      const updated = [newLog, ...prev];
-      saveStorage('activity_logs_v2', updated);
-      return updated;
-    });
-
-    syncSaveDoc('activity_logs', newLog.id, newLog);
   };
 
   // Market Pricing & Price Change Logger
@@ -2265,6 +2394,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         saveStorage('admin_auth_status', true);
         setCurrentRoleState('admin');
         saveStorage('active_role', 'admin');
+        logActivity('LOGIN', 'Authentication', 'Superuser Admin logged into the system.', 'admin');
         return { success: true, message: 'Superuser Admin login successful!' };
       }
       return { success: false, message: 'Invalid Admin Password or PIN. Access denied.' };
@@ -2277,6 +2407,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         saveStorage('is_authenticated_v2', true);
         setCurrentRoleState('manager');
         saveStorage('active_role', 'manager');
+        logActivity('LOGIN', 'Authentication', 'Farm Manager logged into the system.', 'manager');
         return { success: true, message: 'Farm Manager login successful!' };
       }
       return { success: false, message: 'Invalid Manager PIN.' };
@@ -2289,6 +2420,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         saveStorage('is_authenticated_v2', true);
         setCurrentRoleState('staff');
         saveStorage('active_role', 'staff');
+        logActivity('LOGIN', 'Authentication', 'Farm Staff logged into the system.', 'staff');
         return { success: true, message: 'Farm Staff login successful!' };
       }
       return { success: false, message: 'Invalid Staff PIN.' };
