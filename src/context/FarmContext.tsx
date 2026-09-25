@@ -2742,7 +2742,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       {children}
     </FarmContext.Provider>
   );
-
+};
 
 export const useFarm = () => {
   const context = useContext(FarmContext);
