@@ -1459,7 +1459,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSupplyItems(prev => prev.filter(s => s.id !== id));
     syncDeleteDoc('supply_items', id);
   };
-  };
 
   const updateSupplyUsageLog = (id: string, updates: Partial<SupplyUsageLog>) => {
     setSupplyUsageLogs(prev => prev.map(s => (s.id === id ? { ...s, ...updates } : s)));
@@ -2315,8 +2314,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         localStorage.removeItem(k);
       }
     });
-  };
-
   };
 
   // Market Pricing & Price Change Logger
