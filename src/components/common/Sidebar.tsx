@@ -27,6 +27,7 @@ import {
   Shield,
   ShieldCheck,
   Lock,
+  Clock,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -51,8 +52,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, onNavigate }) => {
   ).length;
 
   const allNavItems = [
-    ...(currentRole === 'admin'
-      ? [{ id: 'access-control', label: '🛡️ Access Control Panel', icon: ShieldCheck }]
+    ...(currentRole === 'admin' || currentRole === 'owner'
+      ? [
+          { id: 'access-control', label: '🛡️ Access Control Panel', icon: ShieldCheck },
+          { id: 'activity-logs', label: '📜 Activity Audit Logs', icon: Clock },
+        ]
       : []),
     { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard },
     { id: 'flock', label: 'Flock / RTL Birds', icon: Bird },

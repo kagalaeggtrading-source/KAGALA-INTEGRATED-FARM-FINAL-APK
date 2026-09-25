@@ -107,6 +107,7 @@ export const ALL_APP_MODULES = [
   { id: 'trash', label: 'Trash Bin' },
   { id: 'reports', label: 'Reports & Analytics' },
   { id: 'settings', label: 'Farm Profile & Settings' },
+  { id: 'activity-logs', label: '📜 Activity Audit Logs' },
 ];
 
 export const USER_ROLES: Record<UserRole, RoleConfig> = {
@@ -119,6 +120,7 @@ export const USER_ROLES: Record<UserRole, RoleConfig> = {
     boundarySummary: 'Superuser access. Zero boundaries. Can manage Access Control for Manager and Staff.',
     allowedTabs: [
       'access-control',
+      'activity-logs',
       'dashboard',
       'flock',
       'production',

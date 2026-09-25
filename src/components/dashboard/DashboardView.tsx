@@ -6,6 +6,7 @@
 import React from 'react';
 import { useFarm } from '../../context/FarmContext';
 import { formatCurrency, formatNumber } from '../../constants';
+import { ExcelReportGenerator } from '../admin/ExcelReportGenerator';
 import {
   Bird,
   Egg,
@@ -235,6 +236,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           )}
         </div>
       </div>
+
+      {/* ADMIN EXCEL REPORT GENERATOR COMPONENT */}
+      <ExcelReportGenerator />
 
       {/* Active Alerts Banner if any */}
       {alerts.length > 0 && (

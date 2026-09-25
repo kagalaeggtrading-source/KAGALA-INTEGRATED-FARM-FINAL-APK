@@ -183,6 +183,7 @@ export type SupplyCategory =
   | 'supplement'
   | 'disinfectant'
   | 'cleaning'
+  | 'pest_control'
   | 'egg_tray'
   | 'packaging'
   | 'other';
@@ -506,4 +507,16 @@ export interface RoleCredentials {
   admin: string;
   manager: string;
   staff: string;
+}
+
+export type ActionType = 'CREATED' | 'EDITED' | 'DELETED' | 'SWITCH_AUTHORIZED' | 'LOGIN' | 'SETTINGS_CHANGED';
+
+export interface ActivityLog {
+  id: string;
+  timestamp: string;
+  userRole: UserRole;
+  userName?: string;
+  actionType: ActionType;
+  module: string;
+  details: string;
 }

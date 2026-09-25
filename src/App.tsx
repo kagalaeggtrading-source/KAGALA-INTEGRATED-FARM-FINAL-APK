@@ -13,6 +13,7 @@ import { LoginPage } from './components/auth/LoginPage';
 import { AdminOverrideModal } from './components/auth/AdminOverrideModal';
 
 import { AccessControlPanelView } from './components/admin/AccessControlPanelView';
+import { ActivityAuditLogsView } from './components/admin/ActivityAuditLogsView';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { FlockView } from './components/flock/FlockView';
 import { EggProductionView } from './components/production/EggProductionView';
@@ -55,6 +56,8 @@ function AppContent() {
     switch (activeTab) {
       case 'access-control':
         return <AccessControlPanelView onNavigate={handleNavigate} />;
+      case 'activity-logs':
+        return <ActivityAuditLogsView />;
       case 'dashboard':
         return <DashboardView onNavigate={handleNavigate} />;
       case 'flock':

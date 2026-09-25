@@ -36,6 +36,8 @@ import {
   RolePermissions,
   TeamMember,
   RoleCredentials,
+  ActionType,
+  ActivityLog,
 } from '../types';
 import {
   DEFAULT_FARM_PROFILE,
@@ -232,6 +234,10 @@ interface FarmContextType {
   roleCredentials: RoleCredentials;
   changeUserPassword: (role: UserRole, currentPassword: string, newPassword: string) => { success: boolean; message: string };
   adminResetUserPassword: (targetRole: UserRole, newPassword: string) => { success: boolean; message: string };
+  // Activity Audit Logs
+  activityLogs: ActivityLog[];
+  logActivity: (actionType: ActionType, module: string, details: string, actorRole?: UserRole) => void;
+
   currentRole: UserRole;
   setRole: (role: UserRole) => void;
   activeRoleConfig: RoleConfig;
@@ -345,6 +351,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const [trashItems, setTrashItems] = useState<TrashItem[]>(() =>
     loadStorage('trash_items', [])
+  );
+
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() =>
+    loadStorage<ActivityLog[]>('activity_logs_v2', [])
   );
 
   const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
@@ -2136,6 +2146,41 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   };
 
+  // Activity Log Helper
+  const logActivity = (
+    actionType: ActionType,
+    module: string,
+    details: string,
+    actorRole?: UserRole
+  ) => {
+    const activeRole = actorRole || currentRole;
+    const roleTitle = activeRole === 'admin' ? 'Superuser Admin' : activeRole === 'manager' ? 'Farm Manager' : 'Farm Staff';
+    const now = new Date();
+    const formattedTimestamp = now.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }) + ' ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    const newLog: ActivityLog = {
+      id: 'LOG-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).substring(2, 6),
+      timestamp: formattedTimestamp,
+      userRole: activeRole,
+      userName: roleTitle,
+      actionType,
+      module,
+      details,
+    };
+
+    setActivityLogs(prev => {
+      const updated = [newLog, ...prev];
+      saveStorage('activity_logs_v2', updated);
+      return updated;
+    });
+
+    syncSaveDoc('activity_logs', newLog.id, newLog);
+  };
+
   // Universal Login Session Methods
   const loginSession = (
     role: UserRole,
@@ -2480,6 +2525,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         roleCredentials,
         changeUserPassword,
         adminResetUserPassword,
+        activityLogs,
+        logActivity,
         currentRole,
         setRole,
         activeRoleConfig,
