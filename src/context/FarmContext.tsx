@@ -1080,9 +1080,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setEggProductionLogs(prev => prev.filter(p => p.id !== id));
     syncDeleteDoc('egg_production_logs', id);
   };
-    }
-    setEggProductionLogs(prev => prev.filter(p => p.id !== id));
-    syncDeleteDoc('egg_production_logs', id);
   };
 
   const addEggAdjustment = (adj: Omit<EggInventoryAdjustment, 'id' | 'createdAt'>) => {
@@ -2760,4 +2757,4 @@ export const useFarm = () => {
     throw new Error('useFarm must be used within a FarmProvider');
   }
   return context;
-};
+

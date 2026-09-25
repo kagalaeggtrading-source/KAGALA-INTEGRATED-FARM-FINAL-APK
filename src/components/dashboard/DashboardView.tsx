@@ -3,10 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { useFarm } from '../../context/FarmContext';
 import { formatCurrency, formatNumber } from '../../constants';
 import { ExcelReportGenerator } from '../admin/ExcelReportGenerator';
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from 'recharts';
 import {
   Bird,
   Egg,
@@ -24,15 +34,20 @@ import {
   AlertTriangle,
   PlusCircle,
   BarChart3,
-  Building2,
   CheckCircle2,
   Scale,
   Calculator,
+  Calendar,
+  Layers,
+  Sparkles,
 } from 'lucide-react';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
 }
+
+type CollectionPeriod = 'daily' | 'weekly' | 'monthly';
+type CollectionUnit = 'pieces' | 'trays';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const {
@@ -60,6 +75,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     potentialRevenue,
     actualRealizedRevenue,
   } = useFarm();
+
+  const [collectionPeriod, setCollectionPeriod] = useState<CollectionPeriod>('daily');
+  const [collectionUnit, setCollectionUnit] = useState<CollectionUnit>('pieces');
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -168,23 +186,135 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     });
   }
 
-  // 7-day Production trend
-  const last7Days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    last7Days.push(d.toISOString().split('T')[0]);
-  }
+  // --- EGG COLLECTION TREND LINE GRAPH DATA BUCKETS ---
+  const collectionBuckets = useMemo(() => {
+    const buckets: { key: string; label: string; dateStart: string; dateEnd: string }[] = [];
+    const today = new Date();
 
-  const productionByDay = last7Days.map(date => {
-    const logs = eggProductionLogs.filter(l => l.date === date);
-    const total = logs.reduce((sum, l) => sum + l.totalCollection, 0);
-    const usable = logs.reduce((sum, l) => sum + l.usableEggs, 0);
-    const dayLabel = new Date(date).toLocaleDateString('en-PH', { weekday: 'short' });
-    return { date, dayLabel, total, usable };
-  });
+    if (collectionPeriod === 'monthly') {
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const monthKey = `${yyyy}-${mm}`;
+        const label = d.toLocaleDateString('en-PH', { month: 'short', year: '2-digit' });
+        const lastDay = new Date(yyyy, d.getMonth() + 1, 0).getDate();
+        buckets.push({
+          key: monthKey,
+          label,
+          dateStart: `${monthKey}-01`,
+          dateEnd: `${monthKey}-${String(lastDay).padStart(2, '0')}`,
+        });
+      }
+    } else if (collectionPeriod === 'weekly') {
+      for (let i = 3; i >= 0; i--) {
+        const endD = new Date(today);
+        endD.setDate(today.getDate() - i * 7);
+        const startD = new Date(endD);
+        startD.setDate(endD.getDate() - 6);
 
-  const maxProdIn7Days = Math.max(...productionByDay.map(p => p.total), 10);
+        const formatDate = (d: Date) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+        buckets.push({
+          key: `week-${i}`,
+          label: `W${4 - i} (${startD.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })})`,
+          dateStart: formatDate(startD),
+          dateEnd: formatDate(endD),
+        });
+      }
+    } else {
+      // Daily (14 days)
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(today.getDate() - i);
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        const dateKey = `${yyyy}-${mm}-${dd}`;
+        buckets.push({
+          key: dateKey,
+          label: d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
+          dateStart: dateKey,
+          dateEnd: dateKey,
+        });
+      }
+    }
+
+    return buckets;
+  }, [collectionPeriod]);
+
+  const collectionLineChartData = useMemo(() => {
+    const isTray = collectionUnit === 'trays';
+    const factor = isTray ? 30 : 1;
+
+    return collectionBuckets.map(bucket => {
+      const logs = eggProductionLogs.filter(
+        l => l.date >= bucket.dateStart && l.date <= bucket.dateEnd
+      );
+
+      const rawTotal = logs.reduce((sum, l) => sum + l.totalCollection, 0);
+      const rawUsable = logs.reduce((sum, l) => sum + l.usableEggs, 0);
+      const rawRejects = logs.reduce(
+        (sum, l) =>
+          sum + (l.rejects != null ? l.rejects : (l.brokenEggs || 0) + (l.dirtyEggs || 0)),
+        0
+      );
+
+      const rawSmall = logs.reduce((sum, l) => sum + (l.grades?.small || 0), 0);
+      const rawMedium = logs.reduce((sum, l) => sum + (l.grades?.medium || 0), 0);
+      const rawLarge = logs.reduce((sum, l) => sum + (l.grades?.large || 0), 0);
+      const rawXl = logs.reduce((sum, l) => sum + (l.grades?.xl || 0), 0);
+      const rawJumbo = logs.reduce((sum, l) => sum + (l.grades?.jumbo || 0), 0);
+
+      return {
+        label: bucket.label,
+        totalCollection: Number((rawTotal / factor).toFixed(1)),
+        usableEggs: Number((rawUsable / factor).toFixed(1)),
+        rejects: Number((rawRejects / factor).toFixed(1)),
+        small: Number((rawSmall / factor).toFixed(1)),
+        medium: Number((rawMedium / factor).toFixed(1)),
+        large: Number((rawLarge / factor).toFixed(1)),
+        xl: Number((rawXl / factor).toFixed(1)),
+        jumbo: Number((rawJumbo / factor).toFixed(1)),
+      };
+    });
+  }, [collectionBuckets, eggProductionLogs, collectionUnit]);
+
+  // Peak Harvest Point
+  const peakHarvestPoint = useMemo(() => {
+    if (collectionLineChartData.length === 0) return null;
+    return [...collectionLineChartData].sort((a, b) => b.totalCollection - a.totalCollection)[0];
+  }, [collectionLineChartData]);
+
+  // Custom Line Chart Tooltip Formatter
+  const CollectionCustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || !payload.length) return null;
+
+    return (
+      <div className="bg-slate-900/95 backdrop-blur-xs text-white p-3.5 rounded-xl shadow-2xl border border-slate-800 text-xs min-w-[200px] z-50 space-y-2">
+        <div className="font-bold font-heading text-slate-200 pb-1 border-b border-slate-700 flex items-center justify-between">
+          <span>{label}</span>
+          <span className="text-[10px] text-emerald-400 font-mono font-bold uppercase">
+            {collectionUnit}
+          </span>
+        </div>
+        <div className="space-y-1">
+          {payload.map((entry: any, index: number) => (
+            <div key={`item-${index}`} className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-slate-300">{entry.name}:</span>
+              </div>
+              <span className="font-mono font-bold text-white">
+                {formatNumber(entry.value)} {collectionUnit === 'trays' ? 'trays' : 'pcs'}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
@@ -400,6 +530,107 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
+      {/* DYNAMIC EGG COLLECTION TREND LINE GRAPH MODULE */}
+      {hasPermission('viewFlockMetrics') && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5 text-emerald-600" />
+                <h3 className="font-heading font-bold text-sm text-slate-900">
+                  Egg Collection Trend Line Graph (By Grade)
+                </h3>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Dynamic timeline tracking egg harvest counts, grade breakdown trends, and production peaks.
+              </p>
+            </div>
+
+            {/* View Toggles: Period & Unit */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Unit Toggle: Pieces vs Trays */}
+              <div className="inline-flex bg-slate-100 p-1 rounded-xl text-xs font-semibold border border-slate-200">
+                <button
+                  onClick={() => setCollectionUnit('pieces')}
+                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                    collectionUnit === 'pieces'
+                      ? 'bg-slate-900 text-white font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Pieces (pcs)
+                </button>
+                <button
+                  onClick={() => setCollectionUnit('trays')}
+                  className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                    collectionUnit === 'trays'
+                      ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Trays (30s)
+                </button>
+              </div>
+
+              {/* Period Toggle: Daily, Weekly, Monthly */}
+              <div className="inline-flex bg-slate-100 p-1 rounded-xl text-xs font-semibold border border-slate-200">
+                {(['daily', 'weekly', 'monthly'] as CollectionPeriod[]).map(p => (
+                  <button
+                    key={p}
+                    onClick={() => setCollectionPeriod(p)}
+                    className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer uppercase text-[11px] ${
+                      collectionPeriod === p
+                        ? 'bg-white text-slate-900 font-bold shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Peak Harvest Summary Badge */}
+          {peakHarvestPoint && (
+            <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="text-slate-700 font-medium">
+                  Peak Harvest for {collectionPeriod.toUpperCase()} view:{' '}
+                  <strong className="text-emerald-900 font-bold">
+                    {formatNumber(peakHarvestPoint.totalCollection)} {collectionUnit} ({peakHarvestPoint.label})
+                  </strong>
+                </span>
+              </div>
+              <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded font-mono">
+                {collectionUnit === 'trays' ? '30 Eggs per Tray' : 'Individual Count'}
+              </span>
+            </div>
+          )}
+
+          {/* Recharts Line Graph Component */}
+          <div className="h-72 w-full pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={collectionLineChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CollectionCustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                <Line type="monotone" dataKey="totalCollection" name="Total Harvest" stroke="#0f172a" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                <Line type="monotone" dataKey="small" name="Small Grade" stroke="#f59e0b" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="medium" name="Medium Grade" stroke="#0ea5e9" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="large" name="Large Grade" stroke="#10b981" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="xl" name="XL Grade" stroke="#6366f1" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="jumbo" name="Jumbo Grade" stroke="#a855f7" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="rejects" name="Rejects / Cracked" stroke="#f43f5e" strokeWidth={1.5} strokeDasharray="4 4" dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+
       {/* TODAY'S CORE OPERATIONAL TELEMETRY */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -545,7 +776,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* FINANCIAL SUMMARY ROW (7 KPIs RE-FORMULATED) */}
+      {/* FINANCIAL SUMMARY ROW */}
       {hasPermission('viewFinancialMetrics') && (
         <div className="space-y-3 pt-1">
           <div className="flex items-center justify-between">
@@ -674,72 +905,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 Uncollected invoices
               </div>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 7-DAY EGG PRODUCTION TREND CHART */}
-      {hasPermission('viewFlockMetrics') && (
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-heading font-bold text-sm text-slate-900 flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-emerald-600" />
-                <span>7-Day Egg Harvest Trend</span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Daily total eggs vs usable graded eggs collected across all houses
-              </p>
-            </div>
-            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200">
-              Live Production
-            </span>
-          </div>
-
-          <div className="grid grid-cols-7 gap-2 pt-4 items-end h-40 border-b border-slate-100 pb-2">
-            {productionByDay.map(day => {
-              const heightTotalPct = Math.min(100, Math.max(10, (day.total / maxProdIn7Days) * 100));
-              const heightUsablePct = Math.min(100, Math.max(8, (day.usable / maxProdIn7Days) * 100));
-
-              return (
-                <div key={day.date} className="flex flex-col items-center gap-1.5 h-full justify-end group">
-                  <div className="text-[10px] font-bold text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                    {formatNumber(day.total)}
-                  </div>
-
-                  <div className="w-full max-w-[36px] bg-slate-100 rounded-t-md h-full flex items-end justify-center relative overflow-hidden">
-                    {/* Total Bar */}
-                    <div
-                      style={{ height: `${heightTotalPct}%` }}
-                      className="w-full bg-emerald-200 rounded-t-md absolute bottom-0 transition-all duration-300"
-                    />
-                    {/* Usable Bar */}
-                    <div
-                      style={{ height: `${heightUsablePct}%` }}
-                      className="w-full bg-emerald-600 rounded-t-md absolute bottom-0 transition-all duration-300"
-                    />
-                  </div>
-
-                  <div className="text-[11px] font-semibold text-slate-600 font-heading">
-                    {day.dayLabel}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-emerald-600" />
-                <span>Usable Graded Eggs</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded bg-emerald-200" />
-                <span>Total Collection</span>
-              </div>
-            </div>
-            <span className="text-[11px] text-slate-400">Hover bars for exact numbers</span>
           </div>
         </div>
       )}
