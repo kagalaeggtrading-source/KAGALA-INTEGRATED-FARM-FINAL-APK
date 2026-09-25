@@ -13,6 +13,7 @@ import {
   CustomerPayment,
   BankDeposit,
   BankAccount,
+  PriceChangeLog,
 } from '../types';
 
 export interface ExcelReportFilter {
@@ -32,7 +33,8 @@ export function generateMultiSheetExcelReport(
   bankDeposits: BankDeposit[],
   eggProductionLogs: EggProductionLog[],
   supplyItems: SupplyItem[],
-  activityLogs: ActivityLog[]
+  activityLogs: ActivityLog[],
+  priceChangeLogs: PriceChangeLog[] = []
 ) {
   // Filter helper for selected period
   const filterDateMatch = (dateStr: string) => {
@@ -64,6 +66,7 @@ export function generateMultiSheetExcelReport(
   const periodDeposits = bankDeposits.filter(d => filterDateMatch(d.depositDate));
   const periodEggLogs = eggProductionLogs.filter(l => filterDateMatch(l.date));
   const periodLogs = activityLogs.filter(l => filterDateMatch(l.timestamp.split(' ')[0]));
+  const periodPriceLogs = priceChangeLogs.filter(p => filterDateMatch(p.date || p.timestamp.split(' ')[0]));
 
   // Pest Control & Cleaning Supplies Filter
   const pestControlSupplies = supplyItems.filter(
@@ -73,7 +76,7 @@ export function generateMultiSheetExcelReport(
   // --- SHEET 1: FINANCIAL CALCULATIONS ---
   // Gross Revenue
   const totalGrossRevenue = periodSales.reduce((sum, s) => sum + s.total, 0);
-  const totalEggSalesRevenue = totalGrossRevenue; // All sales in farm system are egg sales
+  const totalEggSalesRevenue = totalGrossRevenue;
   const totalUncollectedAR = periodSales.reduce((sum, s) => sum + s.balance, 0);
 
   // Collected Revenue (Cash vs Bank Transfer)
@@ -215,8 +218,6 @@ export function generateMultiSheetExcelReport(
    <Column ss:Width="90"/>
    <Column ss:Width="160"/>
    <Column ss:Width="180"/>
-   <Column ss:Width="90"/>
-   <Column ss:Width="90"/>
    <Column ss:Width="90"/>
    <Column ss:Width="90"/>
    <Column ss:Width="90"/>
@@ -364,6 +365,38 @@ export function generateMultiSheetExcelReport(
      .join('')}
   </Table>
  </Worksheet>
+
+ <!-- SHEET 7: PRICE CHANGE AUDIT HISTORY -->
+ <Worksheet ss:Name="Price Change Audit History">
+  <Table>
+   <Column ss:Width="150"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="250"/>
+   <Column ss:Width="140"/>
+   ${createXmlRow(['Timestamp', 'Date', 'Egg Grade', 'Old Price (₱)', 'New Price (₱)', 'Price Delta (₱)', 'Reason for Price Change', 'Updated By'], true)}
+   ${periodPriceLogs.length === 0
+     ? createXmlRow(['No manual price adjustments recorded for this period', '', '', 0, 0, 0, '', ''])
+     : ''}
+   ${periodPriceLogs
+     .map(p =>
+       createXmlRow([
+         p.timestamp,
+         p.date,
+         p.grade.toUpperCase(),
+         p.oldPrice,
+         p.newPrice,
+         p.newPrice - p.oldPrice,
+         p.reason || 'Admin market price adjustment',
+         p.changedBy || 'Superuser Admin',
+       ])
+     )
+     .join('')}
+  </Table>
+ </Worksheet>
 </Workbook>`;
 
   // Create Blob & Trigger Download
@@ -371,7 +404,7 @@ export function generateMultiSheetExcelReport(
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  const fileName = `Kagala_Farm_Accounting_Sheet_${filter.periodType}_${new Date().toISOString().split('T')[0]}.xls`;
+  const fileName = `Kagala_Farm_Comprehensive_Accounting_Package_${filter.periodType}_${new Date().toISOString().split('T')[0]}.xls`;
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);

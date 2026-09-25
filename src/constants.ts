@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { EggGradeConfig, FarmProfile, ExpenseCategory, UserRole, RoleConfig, RoleCredentials } from './types';
+import { EggGradeConfig, FarmProfile, ExpenseCategory, UserRole, RoleConfig, RoleCredentials, EggGradeKey } from './types';
 
 export const EGG_GRADES: EggGradeConfig[] = [
   { key: 'peewee', label: 'Peewee', weightRange: '<45g', description: 'Under 45g' },
@@ -15,6 +15,18 @@ export const EGG_GRADES: EggGradeConfig[] = [
   { key: 'jumbo', label: 'Jumbo', weightRange: '70-75g', description: '70 to 75g' },
   { key: 'oversize', label: 'Oversize', weightRange: '>76g', description: 'Over 76g' },
 ];
+
+export const DEFAULT_EGG_GRADE_PRICES: Record<EggGradeKey, { trayPrice: number; piecePrice: number }> = {
+  peewee: { trayPrice: 150, piecePrice: 5.0 },
+  xs: { trayPrice: 165, piecePrice: 5.5 },
+  small: { trayPrice: 180, piecePrice: 6.0 },
+  medium: { trayPrice: 200, piecePrice: 6.7 },
+  large: { trayPrice: 220, piecePrice: 7.3 },
+  xl: { trayPrice: 235, piecePrice: 7.8 },
+  jumbo: { trayPrice: 250, piecePrice: 8.3 },
+  oversize: { trayPrice: 270, piecePrice: 9.0 },
+  superJumbo: { trayPrice: 280, piecePrice: 9.3 },
+};
 
 export const DEFAULT_FARM_PROFILE: FarmProfile = {
   farmName: 'Kagala Integrated Farm',

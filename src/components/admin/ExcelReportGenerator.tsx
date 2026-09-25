@@ -11,7 +11,6 @@ import {
   Calendar,
   Lock,
   CheckCircle2,
-  Table,
   Filter,
   Layers,
 } from 'lucide-react';
@@ -31,6 +30,7 @@ export const ExcelReportGenerator: React.FC = () => {
     eggProductionLogs,
     supplyItems,
     activityLogs,
+    priceChangeLogs,
     currentRole,
     isAdminAuthenticated,
   } = useFarm();
@@ -72,19 +72,11 @@ export const ExcelReportGenerator: React.FC = () => {
       bankDeposits,
       eggProductionLogs,
       supplyItems,
-      activityLogs
-    );
-      filter,
-      sales,
-      payments,
-      expenses,
-      bankDeposits,
-      eggProductionLogs,
-      supplyItems,
-      activityLogs
+      activityLogs,
+      priceChangeLogs
     );
 
-    setExportSuccess('Multi-Sheet Excel Spreadsheet generated and downloaded successfully!');
+    setExportSuccess('Multi-Sheet Excel Accounting Package generated and downloaded successfully!');
     setTimeout(() => setExportSuccess(null), 4000);
   };
 
@@ -100,7 +92,7 @@ export const ExcelReportGenerator: React.FC = () => {
               <span>Financial & Inventory Excel Report Engine</span>
             </h2>
             <p className="text-xs text-slate-300 mt-0.5">
-              Generate a multi-tab Excel spreadsheet containing formatted data across 6 individual sheets.
+              Generate a comprehensive multi-tab Excel spreadsheet package across 7 individual sheets.
             </p>
           </div>
         </div>
@@ -181,15 +173,16 @@ export const ExcelReportGenerator: React.FC = () => {
         <div className="md:col-span-2 space-y-1.5">
           <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
             <Layers className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Compiled Multi-Sheet Spreadsheet Structure (6 Tabs):</span>
+            <span>Compiled Multi-Sheet Spreadsheet Package (7 Tabs):</span>
           </div>
           <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-emerald-300 font-mono">1. Summary Dashboard</span>
-            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">2. Sales & Collection Log</span>
-            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">3. Farm Expenses Log</span>
+            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-emerald-300 font-mono">1. Exec Financial Summary</span>
+            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">2. Sales & Collection Ledger</span>
+            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">3. Expense Registry</span>
             <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">4. Egg Reconciliation</span>
             <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">5. Pest Control Supplies</span>
-            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-amber-300 font-mono">6. Activity Audit Trail</span>
+            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-slate-300 font-mono">6. System Audit Trail</span>
+            <span className="bg-slate-950 border border-slate-700 px-2 py-0.5 rounded text-amber-300 font-mono">7. Price Change History</span>
           </div>
         </div>
 
@@ -200,7 +193,7 @@ export const ExcelReportGenerator: React.FC = () => {
             className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-2xl shadow-lg hover:shadow-emerald-900/40 transition-all cursor-pointer flex items-center justify-center gap-2"
           >
             <Download className="w-4 h-4" />
-            <span>Export 6-Sheet Excel Workbook (.xls / .xlsx)</span>
+            <span>Export 7-Sheet Excel Accounting Package (.xls / .xlsx)</span>
           </button>
         </div>
       </form>

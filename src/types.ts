@@ -520,3 +520,15 @@ export interface ActivityLog {
   module: string;
   details: string;
 }
+
+export interface PriceChangeLog {
+  id: string;
+  timestamp: string;
+  date: string;
+  grade: EggGradeKey;
+  priceType: 'tray' | 'piece';
+  oldPrice: number;
+  newPrice: number;
+  reason?: string;
+  changedBy: string;
+}

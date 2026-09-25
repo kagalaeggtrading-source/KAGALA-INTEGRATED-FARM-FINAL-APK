@@ -38,6 +38,7 @@ import {
   RoleCredentials,
   ActionType,
   ActivityLog,
+  PriceChangeLog,
 } from '../types';
 import {
   DEFAULT_FARM_PROFILE,
@@ -49,6 +50,7 @@ import {
   MANAGER_CREDENTIALS,
   STAFF_CREDENTIALS,
   DEFAULT_ROLE_CREDENTIALS,
+  DEFAULT_EGG_GRADE_PRICES,
 } from '../constants';
 import {
   syncSaveDoc,
@@ -238,6 +240,11 @@ interface FarmContextType {
   activityLogs: ActivityLog[];
   logActivity: (actionType: ActionType, module: string, details: string, actorRole?: UserRole) => void;
 
+  // Market Pricing & Price Change Log History
+  priceChangeLogs: PriceChangeLog[];
+  eggGradePrices: Record<EggGradeKey, { trayPrice: number; piecePrice: number }>;
+  updateEggGradePrice: (grade: EggGradeKey, newTrayPrice: number, newPiecePrice: number, reason?: string) => void;
+
   currentRole: UserRole;
   setRole: (role: UserRole) => void;
   activeRoleConfig: RoleConfig;
@@ -356,6 +363,15 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() =>
     loadStorage<ActivityLog[]>('activity_logs_v2', [])
   );
+
+  const [priceChangeLogs, setPriceChangeLogs] = useState<PriceChangeLog[]>(() =>
+    loadStorage<PriceChangeLog[]>('price_change_logs_v2', [])
+  );
+
+  const [eggGradePrices, setEggGradePrices] = useState<Record<EggGradeKey, { trayPrice: number; piecePrice: number }>>(() => {
+    const saved = loadStorage<Record<EggGradeKey, { trayPrice: number; piecePrice: number }>>('egg_grade_prices_v2', DEFAULT_EGG_GRADE_PRICES);
+    return { ...DEFAULT_EGG_GRADE_PRICES, ...saved };
+  });
 
   const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
 
@@ -2181,6 +2197,58 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     syncSaveDoc('activity_logs', newLog.id, newLog);
   };
 
+  // Market Pricing & Price Change Logger
+  const updateEggGradePrice = (
+    grade: EggGradeKey,
+    newTrayPrice: number,
+    newPiecePrice: number,
+    reason?: string
+  ) => {
+    const current = eggGradePrices[grade] || DEFAULT_EGG_GRADE_PRICES[grade];
+    const oldTrayPrice = current.trayPrice;
+    const now = new Date();
+    const formattedTimestamp = now.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }) + ' ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+
+    const newLog: PriceChangeLog = {
+      id: 'PRICELOG-' + Date.now().toString().slice(-6),
+      timestamp: formattedTimestamp,
+      date: now.toISOString().split('T')[0],
+      grade,
+      priceType: 'tray',
+      oldPrice: oldTrayPrice,
+      newPrice: newTrayPrice,
+      reason: reason?.trim() || 'Admin manual market price adjustment',
+      changedBy: activeRoleConfig.title,
+    };
+
+    setPriceChangeLogs(prev => {
+      const updated = [newLog, ...prev];
+      saveStorage('price_change_logs_v2', updated);
+      return updated;
+    });
+
+    setEggGradePrices(prev => {
+      const updated = {
+        ...prev,
+        [grade]: { trayPrice: newTrayPrice, piecePrice: newPiecePrice },
+      };
+      saveStorage('egg_grade_prices_v2', updated);
+      return updated;
+    });
+
+    syncSaveDoc('price_change_logs', newLog.id, newLog);
+
+    logActivity(
+      'SETTINGS_CHANGED',
+      'Market Pricing',
+      `Admin updated selling price for ${grade.toUpperCase()} from ₱${oldTrayPrice} to ₱${newTrayPrice} per tray (${reason?.trim() || 'Market price adjustment'})`
+    );
+  };
+
   // Universal Login Session Methods
   const loginSession = (
     role: UserRole,
@@ -2527,6 +2595,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         adminResetUserPassword,
         activityLogs,
         logActivity,
+        priceChangeLogs,
+        eggGradePrices,
+        updateEggGradePrice,
         currentRole,
         setRole,
         activeRoleConfig,
