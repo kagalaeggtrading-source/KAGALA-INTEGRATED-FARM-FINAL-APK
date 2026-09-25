@@ -2750,5 +2750,5 @@ export const useFarm = () => {
     throw new Error('useFarm must be used within a FarmProvider');
   }
   return context;
-};
+export default FarmContext;
 
