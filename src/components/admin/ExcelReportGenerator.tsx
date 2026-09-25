@@ -26,6 +26,7 @@ export const ExcelReportGenerator: React.FC = () => {
     sales,
     payments,
     expenses,
+    bankAccounts,
     bankDeposits,
     eggProductionLogs,
     supplyItems,
@@ -63,6 +64,16 @@ export const ExcelReportGenerator: React.FC = () => {
 
     generateMultiSheetExcelReport(
       profile,
+      filter,
+      sales,
+      payments,
+      expenses,
+      bankAccounts,
+      bankDeposits,
+      eggProductionLogs,
+      supplyItems,
+      activityLogs
+    );
       filter,
       sales,
       payments,

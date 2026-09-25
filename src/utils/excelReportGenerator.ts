@@ -12,6 +12,7 @@ import {
   ActivityLog,
   CustomerPayment,
   BankDeposit,
+  BankAccount,
 } from '../types';
 
 export interface ExcelReportFilter {
@@ -27,12 +28,13 @@ export function generateMultiSheetExcelReport(
   sales: FarmSale[],
   payments: CustomerPayment[],
   expenses: FarmExpense[],
+  bankAccounts: BankAccount[],
   bankDeposits: BankDeposit[],
   eggProductionLogs: EggProductionLog[],
   supplyItems: SupplyItem[],
   activityLogs: ActivityLog[]
 ) {
-  // 1. Filter Data by Selected Period
+  // Filter helper for selected period
   const filterDateMatch = (dateStr: string) => {
     if (!dateStr) return false;
     if (filter.periodType === 'all') return true;
@@ -63,25 +65,48 @@ export function generateMultiSheetExcelReport(
   const periodEggLogs = eggProductionLogs.filter(l => filterDateMatch(l.date));
   const periodLogs = activityLogs.filter(l => filterDateMatch(l.timestamp.split(' ')[0]));
 
-  // Pest Control Supplies Filter
+  // Pest Control & Cleaning Supplies Filter
   const pestControlSupplies = supplyItems.filter(
-    s => s.category === 'pest_control' || s.category === 'disinfectant' || s.category === 'cleaning'
+    s => s.category === 'pest_control' || s.category === 'disinfectant' || s.category === 'cleaning' || s.category === 'medicine'
   );
 
-  // Financial Totals for Summary Dashboard Sheet
-  const totalCashReceived = periodPayments
+  // --- SHEET 1: FINANCIAL CALCULATIONS ---
+  // Gross Revenue
+  const totalGrossRevenue = periodSales.reduce((sum, s) => sum + s.total, 0);
+  const totalEggSalesRevenue = totalGrossRevenue; // All sales in farm system are egg sales
+  const totalUncollectedAR = periodSales.reduce((sum, s) => sum + s.balance, 0);
+
+  // Collected Revenue (Cash vs Bank Transfer)
+  const totalCashCollected = periodPayments
     .filter(p => p.accountReceivedInto === 'cash_on_hand' || p.paymentMethod === 'Cash')
     .reduce((sum, p) => sum + p.amount, 0);
 
-  const totalBankTransfersReceived = periodPayments
+  const totalBankTransfersCollected = periodPayments
     .filter(p => p.accountReceivedInto === 'bank_account' || p.paymentMethod === 'Bank Transfer')
     .reduce((sum, p) => sum + p.amount, 0);
 
-  const totalExpensesPaidOut = periodExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalCollectionsReceived = totalCashCollected + totalBankTransfersCollected;
+
+  // Operating Expenses Breakdown
+  const expenseFeed = periodExpenses.filter(e => e.category === 'Feed').reduce((sum, e) => sum + e.amount, 0);
+  const expenseLabor = periodExpenses.filter(e => e.category === 'Labor & Salaries').reduce((sum, e) => sum + e.amount, 0);
+  const expenseUtilities = periodExpenses.filter(e => e.category === 'Water' || e.category === 'Electricity').reduce((sum, e) => sum + e.amount, 0);
+  const expensePestControl = periodExpenses.filter(e => e.category === 'Medicine & Vitamins' || e.category === 'Other Farm Supplies').reduce((sum, e) => sum + e.amount, 0);
+  const expenseOther = periodExpenses.filter(e => e.category !== 'Feed' && e.category !== 'Labor & Salaries' && e.category !== 'Water' && e.category !== 'Electricity' && e.category !== 'Medicine & Vitamins' && e.category !== 'Other Farm Supplies').reduce((sum, e) => sum + e.amount, 0);
+
+  const totalOperatingExpenses = periodExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  // Net Profit / Loss Formula: Total Revenue - Total Expenses
+  const netOperatingIncome = totalGrossRevenue - totalOperatingExpenses;
+  const netCashflowIncome = totalCollectionsReceived - totalOperatingExpenses;
+
+  // Ending Liquidity Balances
   const totalBankDepositsCompleted = periodDeposits.reduce((sum, d) => sum + d.amount, 0);
+  const netCashOnHandBalance = totalCashCollected - (totalOperatingExpenses + totalBankDepositsCompleted);
+  const totalBankBalance = bankAccounts.reduce((sum, b) => sum + b.currentBalance, 0);
+  const totalFarmLiquidity = netCashOnHandBalance + totalBankBalance;
 
-  const netCashOnHandBalance = totalCashReceived - (totalExpensesPaidOut + totalBankDepositsCompleted);
-
+  // Egg Quantities
   const totalGoodEggsCollectedPcs = periodEggLogs.reduce((sum, l) => sum + l.usableEggs, 0);
   const totalEggsSoldPcs = periodSales.reduce((totalSum, sale) => {
     const salePcs = (sale.items || []).reduce((iSum, item) => {
@@ -98,7 +123,7 @@ export function generateMultiSheetExcelReport(
       ? `Monthly Report (${filter.selectedMonth || 'Current Month'})`
       : filter.periodType === 'annual'
       ? `Annual Report (${filter.selectedYear || 'Current Year'})`
-      : 'All Time Comprehensive Financial Report';
+      : 'All Time Comprehensive Financial Accounting Package';
 
   // Helper to escape XML special characters
   const xmlXml = (str: string | number | undefined | null) => {
@@ -110,7 +135,7 @@ export function generateMultiSheetExcelReport(
       .replace(/"/g, '&quot;');
   };
 
-  // Helper XML Row
+  // Helper XML Row Builder
   const createXmlRow = (cells: (string | number)[], isHeader = false) => {
     return `<Row>${cells
       .map(c => {
@@ -144,77 +169,93 @@ export function generateMultiSheetExcelReport(
   </Style>
  </Styles>
 
- <!-- SHEET 1: SUMMARY DASHBOARD -->
- <Worksheet ss:Name="Summary Dashboard">
+ <!-- SHEET 1: EXECUTIVE FINANCIAL SUMMARY -->
+ <Worksheet ss:Name="Executive Financial Summary">
   <Table>
-   <Column ss:Width="200"/>
-   <Column ss:Width="180"/>
-   ${createXmlRow(['FARM ENTERPRISE FINANCIAL SUMMARY DASHBOARD', ''], true)}
-   ${createXmlRow(['Farm Name', profile.farmName])}
+   <Column ss:Width="250"/>
+   <Column ss:Width="160"/>
+   ${createXmlRow(['EXECUTIVE FINANCIAL SUMMARY STATEMENT', ''], true)}
+   ${createXmlRow(['Farm Entity Name', profile.farmName])}
    ${createXmlRow(['Reporting Period', periodLabel])}
-   ${createXmlRow(['Generated On', new Date().toLocaleString()])}
+   ${createXmlRow(['Report Generated Date', new Date().toLocaleString()])}
    ${createXmlRow(['', ''])}
-   ${createXmlRow(['FINANCIAL KPI METRIC', 'AMOUNT (PHP)'], true)}
-   ${createXmlRow(['Total Cash Payments Received (₱)', totalCashReceived])}
-   ${createXmlRow(['Total Bank Transfers Received (₱)', totalBankTransfersReceived])}
-   ${createXmlRow(['Total Farm Expenses Paid Out (₱)', totalExpensesPaidOut])}
-   ${createXmlRow(['Total Completed Bank Deposits (₱)', totalBankDepositsCompleted])}
-   ${createXmlRow(['NET CASH ON HAND BALANCE (₱)', netCashOnHandBalance])}
+   ${createXmlRow(['1. GROSS REVENUE ANALYSIS', 'AMOUNT (PHP)'], true)}
+   ${createXmlRow(['Total Gross Sales Billed (₱)', totalGrossRevenue])}
+   ${createXmlRow(['Egg Sales Revenue (₱)', totalEggSalesRevenue])}
+   ${createXmlRow(['Uncollected Accounts Receivable (₱)', totalUncollectedAR])}
    ${createXmlRow(['', ''])}
-   ${createXmlRow(['PRODUCTION & INVENTORY KPI', 'QUANTITY'], true)}
-   ${createXmlRow(['Total Good Eggs Collected (Pcs)', totalGoodEggsCollectedPcs])}
-   ${createXmlRow(['Total Good Eggs Collected (Trays)', Math.floor(totalGoodEggsCollectedPcs / 30)])}
-   ${createXmlRow(['Total Eggs Sold (Pcs)', totalEggsSoldPcs])}
-   ${createXmlRow(['Total Eggs Sold (Trays)', Math.floor(totalEggsSoldPcs / 30)])}
-   ${createXmlRow(['Remaining Unsold Inventory (Pcs)', totalGoodEggsCollectedPcs - totalEggsSoldPcs])}
+   ${createXmlRow(['2. REVENUE COLLECTIONS RECONCILIATION', 'AMOUNT (PHP)'], true)}
+   ${createXmlRow(['Cash on Hand Collections Received (₱)', totalCashCollected])}
+   ${createXmlRow(['Direct Bank Transfer Collections (₱)', totalBankTransfersCollected])}
+   ${createXmlRow(['TOTAL REVENUE COLLECTIONS RECEIVED (₱)', totalCollectionsReceived])}
+   ${createXmlRow(['', ''])}
+   ${createXmlRow(['3. OPERATING EXPENSES BREAKDOWN', 'AMOUNT (PHP)'], true)}
+   ${createXmlRow(['Feed Expenditures (₱)', expenseFeed])}
+   ${createXmlRow(['Labor & Salaries (₱)', expenseLabor])}
+   ${createXmlRow(['Utilities - Water & Electricity (₱)', expenseUtilities])}
+   ${createXmlRow(['Pest Control, Medicine & Disinfectants (₱)', expensePestControl])}
+   ${createXmlRow(['Other Operating Expenditures (₱)', expenseOther])}
+   ${createXmlRow(['TOTAL OPERATING EXPENSES (₱)', totalOperatingExpenses])}
+   ${createXmlRow(['', ''])}
+   ${createXmlRow(['4. NET PROFIT / LOSS STATEMENT', 'AMOUNT (PHP)'], true)}
+   ${createXmlRow(['Net Operating Income (Revenue - Expenses) (₱)', netOperatingIncome])}
+   ${createXmlRow(['Net Cashflow Income (Collections - Expenses) (₱)', netCashflowIncome])}
+   ${createXmlRow(['', ''])}
+   ${createXmlRow(['5. ENDING LIQUIDITY BALANCES', 'AMOUNT (PHP)'], true)}
+   ${createXmlRow(['Ending Cash on Hand (Vault / Register) (₱)', netCashOnHandBalance])}
+   ${createXmlRow(['Total Bank Accounts Balance (₱)', totalBankBalance])}
+   ${createXmlRow(['TOTAL FARM LIQUIDITY (₱)', totalFarmLiquidity])}
   </Table>
  </Worksheet>
 
- <!-- SHEET 2: SALES & COLLECTION LOG -->
- <Worksheet ss:Name="Sales &amp; Collection Log">
+ <!-- SHEET 2: SALES & COLLECTION LEDGER -->
+ <Worksheet ss:Name="Sales &amp; Collection Ledger">
   <Table>
-   <Column ss:Width="100"/>
-   <Column ss:Width="100"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
    <Column ss:Width="160"/>
-   <Column ss:Width="200"/>
-   <Column ss:Width="100"/>
-   <Column ss:Width="100"/>
-   <Column ss:Width="100"/>
-   <Column ss:Width="120"/>
-   ${createXmlRow(['Date', 'Invoice #', 'Customer Name', 'Items Summary', 'Total Amount (₱)', 'Paid (₱)', 'Balance (₱)', 'Payment Method'], true)}
-   ${periodSales.length === 0 ? createXmlRow(['No sales records for this period', '', '', '', 0, 0, 0, '']) : ''}
+   <Column ss:Width="180"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="130"/>
+   ${createXmlRow(['Date', 'Invoice #', 'Customer Name', 'Egg Sizes &amp; Trays Sold', 'Total (₱)', 'Paid (₱)', 'Balance (₱)', 'Payment Channel'], true)}
+   ${periodSales.length === 0 ? createXmlRow(['No sales transactions for this period', '', '', '', 0, 0, 0, '']) : ''}
    ${periodSales
      .map(s => {
-       const itemsDesc = (s.items || [])
+       const itemsSummary = (s.items || [])
          .map(i => `${i.quantityTrays || Math.floor(i.quantityPieces / 30)}t ${i.grade}`)
          .join(', ');
        return createXmlRow([
          s.date,
          s.saleNumber,
          s.customerName,
-         itemsDesc,
+         itemsSummary,
          s.total,
          s.paidAmount,
          s.balance,
-         s.paymentMethod || 'Cash',
+         s.paymentMethod === 'Bank Transfer' ? 'Direct Bank Transfer' : 'Cash on Hand',
        ]);
      })
      .join('')}
   </Table>
  </Worksheet>
 
- <!-- SHEET 3: FARM EXPENSES LOG -->
- <Worksheet ss:Name="Farm Expenses Log">
+ <!-- SHEET 3: EXPENSE REGISTRY -->
+ <Worksheet ss:Name="Expense Registry">
   <Table>
-   <Column ss:Width="100"/>
-   <Column ss:Width="100"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="90"/>
    <Column ss:Width="140"/>
    <Column ss:Width="220"/>
    <Column ss:Width="140"/>
-   <Column ss:Width="110"/>
+   <Column ss:Width="120"/>
    <Column ss:Width="100"/>
-   ${createXmlRow(['Date', 'Voucher #', 'Category', 'Description & Particulars', 'Supplier / Payee', 'Disbursed From', 'Amount (₱)'], true)}
-   ${periodExpenses.length === 0 ? createXmlRow(['No expense records for this period', '', '', '', '', '', 0]) : ''}
+   <Column ss:Width="120"/>
+   ${createXmlRow(['Date', 'Voucher #', 'Category', 'Description &amp; Particulars', 'Supplier / Payee', 'Disbursed Account', 'Cost (₱)', 'Supervisor / Role'], true)}
+   ${periodExpenses.length === 0 ? createXmlRow(['No expense records for this period', '', '', '', '', '', 0, '']) : ''}
    ${periodExpenses
      .map(e =>
        createXmlRow([
@@ -225,53 +266,62 @@ export function generateMultiSheetExcelReport(
          e.supplierPayee || '—',
          e.paymentAccount === 'cash_on_hand' ? 'Cash on Hand (Vault)' : 'Bank Account',
          e.amount,
+         'Authorized Supervisor',
        ])
      )
      .join('')}
   </Table>
  </Worksheet>
 
- <!-- SHEET 4: EGG INVENTORY & RECONCILIATION -->
- <Worksheet ss:Name="Egg Inventory &amp; Reconciliation">
+ <!-- SHEET 4: EGG PRODUCTION & INVENTORY RECONCILIATION -->
+ <Worksheet ss:Name="Egg Production &amp; Reconciliation">
   <Table>
-   <Column ss:Width="100"/>
-   <Column ss:Width="100"/>
-   <Column ss:Width="120"/>
-   <Column ss:Width="120"/>
+   <Column ss:Width="90"/>
    <Column ss:Width="110"/>
    <Column ss:Width="110"/>
-   <Column ss:Width="140"/>
-   ${createXmlRow(['Date', 'Total Harvest', 'Rejects (Pcs)', 'Good Eggs (Pcs)', 'Good Trays', 'Variance Status', 'Collector / Staff'], true)}
-   ${periodEggLogs.length === 0 ? createXmlRow(['No egg collection logs for this period', 0, 0, 0, 0, 'No Data', '']) : ''}
+   <Column ss:Width="120"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="100"/>
+   <Column ss:Width="130"/>
+   <Column ss:Width="120"/>
+   ${createXmlRow(['Date', 'Total Harvest (Pcs)', 'Rejects (Pcs)', 'Usable Good Eggs (Pcs)', 'Good Trays', 'Eggs Sold (Pcs)', 'Stock Variance (Pcs)', 'Reconciliation Status'], true)}
+   ${periodEggLogs.length === 0 ? createXmlRow(['No collection records for this period', 0, 0, 0, 0, 0, 0, 'No Data']) : ''}
    ${periodEggLogs
-     .map(l =>
-       createXmlRow([
+     .map(l => {
+       const soldForDay = periodSales
+         .filter(s => s.date === l.date)
+         .reduce((sum, s) => sum + (s.items || []).reduce((iSum, i) => iSum + (i.priceType === 'tray' ? i.quantityTrays * 30 : i.quantityPieces), 0), 0);
+       const variance = l.usableEggs - soldForDay;
+       return createXmlRow([
          l.date,
          l.totalCollection,
          l.rejects,
          l.usableEggs,
          Math.floor(l.usableEggs / 30),
-         l.totalCollection === l.usableEggs + l.rejects ? 'Balanced' : 'Discrepancy',
-         l.collectorName || 'Farm Caretaker',
-       ])
-     )
+         soldForDay,
+         variance,
+         variance >= 0 ? 'Balanced' : 'Discrepancy Warning',
+       ]);
+     })
      .join('')}
   </Table>
  </Worksheet>
 
- <!-- SHEET 5: PEST CONTROL SUPPLIES -->
- <Worksheet ss:Name="Pest Control Supplies">
+ <!-- SHEET 5: PEST CONTROL & SUPPLIES INVENTORY -->
+ <Worksheet ss:Name="Pest Control &amp; Supplies">
   <Table>
    <Column ss:Width="160"/>
    <Column ss:Width="130"/>
-   <Column ss:Width="100"/>
-   <Column ss:Width="80"/>
-   <Column ss:Width="100"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="70"/>
+   <Column ss:Width="90"/>
+   <Column ss:Width="110"/>
+   <Column ss:Width="90"/>
    <Column ss:Width="100"/>
    <Column ss:Width="140"/>
-   ${createXmlRow(['Supply Item Name', 'Category', 'Stock Qty', 'Unit', 'Unit Cost (₱)', 'Stock Value (₱)', 'Supplier / Notes'], true)}
+   ${createXmlRow(['Supply Item Name', 'Category', 'Stock Qty', 'Unit', 'Min Alert', 'Restock Status', 'Unit Cost (₱)', 'Stock Value (₱)', 'Supplier / Notes'], true)}
    ${pestControlSupplies.length === 0
-     ? createXmlRow(['No pest control supplies in inventory', 'Pest Control', 0, 'pcs', 0, 0, ''])
+     ? createXmlRow(['No pest control or disinfectant supplies', 'Pest Control', 0, 'pcs', 0, 'Sufficient', 0, 0, ''])
      : ''}
    ${pestControlSupplies
      .map(s =>
@@ -280,6 +330,8 @@ export function generateMultiSheetExcelReport(
          s.category.toUpperCase(),
          s.quantity,
          s.unit,
+         s.minimumStock,
+         s.quantity <= s.minimumStock ? 'RESTOCK REQUIRED' : 'Sufficient Stock',
          s.costPerUnit,
          s.quantity * s.costPerUnit,
          s.supplier || 'Farm Supplier',
@@ -289,16 +341,16 @@ export function generateMultiSheetExcelReport(
   </Table>
  </Worksheet>
 
- <!-- SHEET 6: AUDIT TRAIL / ACTIVITY LOGS -->
- <Worksheet ss:Name="Audit Trail &amp; Activity Logs">
+ <!-- SHEET 6: COMPLETE SYSTEM AUDIT TRAIL -->
+ <Worksheet ss:Name="Complete System Audit Trail">
   <Table>
    <Column ss:Width="150"/>
    <Column ss:Width="120"/>
-   <Column ss:Width="120"/>
-   <Column ss:Width="140"/>
-   <Column ss:Width="300"/>
-   ${createXmlRow(['Timestamp', 'User Role', 'Action Type', 'Module', 'Log Details'], true)}
-   ${periodLogs.length === 0 ? createXmlRow(['No activity logs captured for this period', '', '', '', '']) : ''}
+   <Column ss:Width="130"/>
+   <Column ss:Width="150"/>
+   <Column ss:Width="320"/>
+   ${createXmlRow(['Timestamp', 'User / Role', 'Action Type', 'Module', 'Uneditable Activity Log Details'], true)}
+   ${periodLogs.length === 0 ? createXmlRow(['No audit activity entries for this period', '', '', '', '']) : ''}
    ${periodLogs
      .map(l =>
        createXmlRow([
@@ -314,12 +366,12 @@ export function generateMultiSheetExcelReport(
  </Worksheet>
 </Workbook>`;
 
-  // Create Blob & Trigger Multi-Sheet File Download
+  // Create Blob & Trigger Download
   const blob = new Blob([xmlContent], { type: 'application/vnd.ms-excel' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  const fileName = `Kagala_Farm_MultiSheet_Report_${filter.periodType}_${new Date().toISOString().split('T')[0]}.xls`;
+  const fileName = `Kagala_Farm_Accounting_Sheet_${filter.periodType}_${new Date().toISOString().split('T')[0]}.xls`;
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
