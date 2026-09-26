@@ -293,7 +293,11 @@ function loadStorage<T>(key: string, defaultValue: T): T {
   try {
     const data = localStorage.getItem(STORAGE_KEY_PREFIX + key);
     if (!data) return defaultValue;
-    return JSON.parse(data) as T;
+    const parsed = JSON.parse(data);
+    if (Array.isArray(defaultValue) && !Array.isArray(parsed)) {
+      return defaultValue;
+    }
+    return parsed as T;
   } catch (err) {
     console.warn(`Failed to read ${key} from storage:`, err);
     return defaultValue;
@@ -343,7 +347,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadStorage('supply_usage_logs', [])
   );
 
-  const [customers, setCustomers] = useState<Customer[]>(() => loadStorage('customers', []));
+  const [customers, setCustomers] = useState<Customer[]>(() => loadStorage<Customer[]>('customers', []));
   const [orders, setOrders] = useState<FarmOrder[]>(() => loadStorage('orders', []));
   const [sales, setSales] = useState<FarmSale[]>(() => loadStorage('sales', []));
   const [payments, setPayments] = useState<CustomerPayment[]>(() => loadStorage('payments', []));
@@ -468,41 +472,40 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ])
   );
 
-    const logActivity = (
-      actionType: ActionType,
-      module: string,
-      details: string,
-      actorRole?: UserRole
-    ) => {
-      const activeRole = actorRole || currentRole;
-      const roleTitle = activeRole === 'admin' ? 'Superuser Admin' : activeRole === 'manager' ? 'Farm Manager' : 'Farm Staff';
-      const now = new Date();
-      const formattedTimestamp = now.toLocaleDateString('en-PH', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-      }) + ' ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  // Universal Activity Audit Logger (Top of Scope)
+  const logActivity = (
+    actionType: ActionType,
+    module: string,
+    details: string,
+    actorRole?: UserRole
+  ) => {
+    const activeRole = actorRole || currentRole;
+    const roleTitle = activeRole === 'admin' ? 'Superuser Admin' : activeRole === 'manager' ? 'Farm Manager' : 'Farm Staff';
+    const now = new Date();
+    const formattedTimestamp = now.toLocaleDateString('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }) + ' ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-      const newLog: ActivityLog = {
-        id: 'LOG-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).substring(2, 6),
-        timestamp: formattedTimestamp,
-        userRole: activeRole,
-        userName: roleTitle,
-        actionType,
-        module,
-        details,
-      };
-
-      // Functional update para maging instant at reactive ang refresh sa UI dashboard mo
-      setActivityLogs(prev => {
-        const updated = [newLog, ...prev];
-        setTimeout(() => saveStorage('activity_logs_v2', updated), 0);
-        return updated;
-      });
-
-      syncSaveDoc('activity_logs', newLog.id, newLog);
+    const newLog: ActivityLog = {
+      id: 'LOG-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).substring(2, 6),
+      timestamp: formattedTimestamp,
+      userRole: activeRole,
+      userName: roleTitle,
+      actionType,
+      module,
+      details,
     };
 
+    setActivityLogs(prev => {
+      const updated = [newLog, ...prev];
+      setTimeout(() => saveStorage('activity_logs_v2', updated), 0);
+      return updated;
+    });
+
+    syncSaveDoc('activity_logs', newLog.id, newLog);
+  };
 
   // Listen for auth state
   useEffect(() => {
@@ -624,7 +627,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
     });
 
-    // 1. Sum Production Harvest
     eggProductionLogs.forEach(log => {
       if (log.grades) {
         EGG_GRADES.forEach(g => {
@@ -633,7 +635,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     });
 
-    // 2. Adjustments
     eggAdjustments.forEach(adj => {
       if (summary[adj.grade]) {
         if (adj.type === 'in' || adj.type === 'found' || adj.type === 'gift_in') {
@@ -644,7 +645,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     });
 
-    // 3. Sales
     sales.forEach(sale => {
       sale.items.forEach(item => {
         if (summary[item.grade]) {
@@ -653,7 +653,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       });
     });
 
-    // 4. Reserved
     orders.forEach(order => {
       if (order.status === 'NEW' || order.status === 'CONFIRMED' || order.status === 'RESERVED') {
         order.items.forEach(item => {
@@ -664,7 +663,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     });
 
-    // Final calculations per grade
     EGG_GRADES.forEach(g => {
       const s = summary[g.key];
       s.totalPhysical = s.produced + s.adjustmentsIn - s.adjustmentsOut - s.sold;
@@ -1146,19 +1144,26 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const addCustomer = (custData: Omit<Customer, 'id' | 'createdAt'>): Customer => {
+    const generatedCode = 'CUST-' + Date.now().toString().slice(-6);
     const newCust: Customer = {
       ...custData,
+      customerCode: custData.customerCode || generatedCode,
       id: 'CUST-' + Date.now().toString().slice(-6),
       createdAt: new Date().toISOString(),
     };
     setCustomers(prev => [...prev, newCust]);
+    saveStorage('customers', [...customers, newCust]);
     syncSaveDoc('customers', newCust.id, newCust);
     logActivity('CREATED', 'Customer Management', `Registered customer: ${newCust.name} (${newCust.customerCode})`);
     return newCust;
   };
 
   const updateCustomer = (id: string, updates: Partial<Customer>) => {
-    setCustomers(prev => prev.map(c => (c.id === id ? { ...c, ...updates } : c)));
+    setCustomers(prev => {
+      const updated = prev.map(c => (c.id === id ? { ...c, ...updates } : c));
+      saveStorage('customers', updated);
+      return updated;
+    });
     syncUpdateDoc('customers', id, updates);
     logActivity('EDITED', 'Customer Management', `Updated customer profile ${id}`);
   };
@@ -1169,7 +1174,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       moveToTrash('customer', id, `Customer: ${target.name}`, `${target.customerType}`, undefined, target);
       logActivity('DELETED', 'Customer Management', `Moved customer ${target.name} to trash`);
     }
-    setCustomers(prev => prev.filter(c => c.id !== id));
+    setCustomers(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      saveStorage('customers', updated);
+      return updated;
+    });
     syncDeleteDoc('customers', id);
   };
 
@@ -1788,14 +1797,22 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return roleConfigs[currentRole] || USER_ROLES[currentRole] || USER_ROLES.admin;
   }, [currentRole, roleConfigs]);
 
-   const isTabAllowed = (tabId: string): boolean => {
-      // FORCE WHITELIST: Siguraduhing laging lalabas ang activity log tab kahit anong role ang naka-login
-      if (tabId === 'activity-log' || tabId === 'activity-logs' || tabId === 'audit') return true;
-      if (tabId === 'access-control') {
-        return currentRole === 'admin' || !!activeRoleConfig.permissions?.canManageAccessControl;
-      }
-      return activeRoleConfig.allowedTabs ? activeRoleConfig.allowedTabs.includes(tabId) : true;
-    };
+  const isTabAllowed = (tabId: string): boolean => {
+    if (
+      tabId === 'activity-log' ||
+      tabId === 'activity-logs' ||
+      tabId === 'audit' ||
+      tabId === 'customer' ||
+      tabId === 'customers' ||
+      tabId === 'customer-management'
+    ) {
+      return true;
+    }
+    if (tabId === 'access-control') {
+      return currentRole === 'admin' || !!activeRoleConfig.permissions?.canManageAccessControl;
+    }
+    return activeRoleConfig.allowedTabs ? activeRoleConfig.allowedTabs.includes(tabId) : true;
+  };
 
   const hasPermission = (perm: keyof RolePermissions): boolean => {
     return !!activeRoleConfig.permissions?.[perm];
