@@ -37,10 +37,13 @@ import {
   CheckCircle2,
   Scale,
   Calculator,
-  Calendar,
-  Layers,
   Sparkles,
+  ClipboardList,
+  CheckSquare,
+  Square,
+  Trash2,
 } from 'lucide-react';
+import { DailyTask } from '../../types';
 
 interface DashboardViewProps {
   onNavigate: (tab: string) => void;
@@ -74,10 +77,33 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     hasSalesDiscrepancy,
     potentialRevenue,
     actualRealizedRevenue,
+    totalFeedKgConsumedAllTime,
+    totalFeedBagsConsumedAllTime,
+    feedConsumptionRatio,
+    fcrPerTray,
+    dailyTasks,
+    addDailyTask,
+    toggleDailyTask,
+    deleteDailyTask,
+    currentRole,
   } = useFarm();
 
   const [collectionPeriod, setCollectionPeriod] = useState<CollectionPeriod>('daily');
   const [collectionUnit, setCollectionUnit] = useState<CollectionUnit>('pieces');
+
+  // Daily Task Planner Input State
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskPriority, setNewTaskPriority] = useState<DailyTask['priority']>('medium');
+  const [newTaskAssignedTo, setNewTaskAssignedTo] = useState('Farm Staff');
+
+  const isManagement = currentRole === 'admin' || currentRole === 'owner' || currentRole === 'manager';
+
+  const handleCreateTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTaskTitle.trim()) return;
+    addDailyTask(newTaskTitle, newTaskPriority, newTaskAssignedTo);
+    setNewTaskTitle('');
+  };
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -152,7 +178,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const totalPaidAllTime = payments.reduce((sum, p) => sum + p.amount, 0);
   const accountsReceivable = Math.max(0, totalBilledAllTime - totalPaidAllTime);
 
-  // Active alerts from real records
+  // Active alerts
   const alerts: { id: string; type: 'warning' | 'critical' | 'info'; message: string; actionTab: string }[] = [];
 
   feedItems.forEach(f => {
@@ -396,6 +422,179 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* REQUIREMENT 5: DAILY TASK PLANNER BOARD WIDGET */}
+      <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-5 border border-slate-800 shadow-xl space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-500/20 rounded-xl border border-indigo-500/30 text-indigo-400">
+              <ClipboardList className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-heading font-bold text-sm text-white flex items-center gap-2">
+                <span>Daily Instructions & Tasks Bulletin Board</span>
+              </h3>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Staff instructions and operational tasks for today ({todayStr}).
+              </p>
+            </div>
+          </div>
+
+          <span className="text-[11px] bg-indigo-500/20 text-indigo-300 font-bold px-2.5 py-1 rounded-full border border-indigo-500/30 self-start sm:self-auto">
+            {dailyTasks.filter(t => t.completed).length} / {dailyTasks.length} COMPLETED
+          </span>
+        </div>
+
+        {/* Task List */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          {dailyTasks.length === 0 ? (
+            <div className="col-span-full p-6 text-center text-slate-400 text-xs italic bg-slate-950/60 rounded-xl border border-slate-800">
+              No active tasks or instructions posted for today.
+            </div>
+          ) : (
+            dailyTasks.map(task => (
+              <div
+                key={task.id}
+                className={`p-3.5 rounded-xl border transition-all flex flex-col justify-between space-y-2 ${
+                  task.completed
+                    ? 'bg-slate-950/40 border-slate-800 text-slate-400 line-through'
+                    : 'bg-slate-950 border-slate-700 text-white'
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  <button
+                    onClick={() => toggleDailyTask(task.id)}
+                    className="mt-0.5 text-emerald-400 hover:text-emerald-300 transition-colors cursor-pointer shrink-0"
+                  >
+                    {task.completed ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4 text-slate-400" />}
+                  </button>
+                  <span className="text-xs font-semibold leading-snug flex-1">{task.title}</span>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[10px]">
+                  <span className={`px-2 py-0.5 rounded font-bold uppercase ${
+                    task.priority === 'high'
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                      : task.priority === 'medium'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      : 'bg-slate-800 text-slate-300'
+                  }`}>
+                    {task.priority}
+                  </span>
+
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <span>Target: {task.assignedTo || 'Staff'}</span>
+                    {isManagement && (
+                      <button
+                        onClick={() => deleteDailyTask(task.id)}
+                        className="text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
+                        title="Delete Instruction"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Create Task Form (Admin & Manager) */}
+        {isManagement && (
+          <form onSubmit={handleCreateTask} className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs items-center">
+            <input
+              type="text"
+              required
+              value={newTaskTitle}
+              onChange={e => setNewTaskTitle(e.target.value)}
+              placeholder="Write instruction / task for staff..."
+              className="sm:col-span-2 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-500"
+            />
+            <div className="flex items-center gap-2">
+              <select
+                value={newTaskPriority}
+                onChange={e => setNewTaskPriority(e.target.value as any)}
+                className="w-full px-2 py-2 bg-slate-950 border border-slate-700 rounded-xl text-white"
+              >
+                <option value="high">High Priority</option>
+                <option value="medium">Medium Priority</option>
+                <option value="low">Low Priority</option>
+              </select>
+            </div>
+            <button
+              type="submit"
+              className="py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>Post Instruction</span>
+            </button>
+          </form>
+        )}
+      </div>
+
+      {/* REQUIREMENT 1: FEED CONSUMPTION ANALYTICS & CUMULATIVE CARDS */}
+      {hasPermission('viewInventoryMetrics') && (
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div className="flex items-center gap-2">
+              <Wheat className="w-5 h-5 text-amber-700" />
+              <h3 className="font-heading font-bold text-sm text-slate-900">
+                Feed Consumption Analytics & Lifetime Efficiency
+              </h3>
+            </div>
+            <span className="text-xs font-semibold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200">
+              Cumulative Telemetry
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+            {/* Cumulative Feed Bags Consumed */}
+            <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200 space-y-1">
+              <div className="text-xs text-amber-900 font-medium">Cumulative Feed (Bags)</div>
+              <div className="text-xl font-bold font-heading text-amber-950">
+                {formatNumber(totalFeedBagsConsumedAllTime)} <span className="text-xs font-semibold text-amber-800">bags</span>
+              </div>
+              <div className="text-[11px] text-amber-800">
+                Lifetime feed consumed from inception
+              </div>
+            </div>
+
+            {/* Cumulative Feed Kg Consumed */}
+            <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200 space-y-1">
+              <div className="text-xs text-amber-900 font-medium">Cumulative Feed (Kg)</div>
+              <div className="text-xl font-bold font-heading text-amber-950 font-mono">
+                {formatNumber(totalFeedKgConsumedAllTime)} <span className="text-xs font-semibold text-amber-800">kg</span>
+              </div>
+              <div className="text-[11px] text-amber-800">
+                Total weight of poultry feed consumed
+              </div>
+            </div>
+
+            {/* Feed Consumption Ratio per Egg */}
+            <div className="p-3.5 bg-slate-900 text-white rounded-xl border border-slate-800 space-y-1">
+              <div className="text-xs text-slate-400 font-medium">Feed Ratio (FCR / Egg)</div>
+              <div className="text-xl font-bold font-heading text-emerald-400 font-mono">
+                {feedConsumptionRatio} <span className="text-xs font-semibold text-slate-400">kg/egg</span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Kg feed required per individual good egg
+              </div>
+            </div>
+
+            {/* Feed Consumption Ratio per Tray */}
+            <div className="p-3.5 bg-slate-900 text-white rounded-xl border border-slate-800 space-y-1">
+              <div className="text-xs text-slate-400 font-medium">Feed Ratio (FCR / Tray)</div>
+              <div className="text-xl font-bold font-heading text-amber-300 font-mono">
+                {fcrPerTray} <span className="text-xs font-semibold text-slate-400">kg/tray</span>
+              </div>
+              <div className="text-[11px] text-slate-400">
+                Kg feed required per 30-egg tray
+              </div>
+            </div>
+          </div>
         </div>
       )}
 

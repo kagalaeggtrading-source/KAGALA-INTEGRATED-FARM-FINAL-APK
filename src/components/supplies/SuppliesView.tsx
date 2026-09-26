@@ -206,7 +206,7 @@ export const SuppliesView: React.FC = () => {
 
       {/* Category Pills Filter */}
       <div className="flex flex-wrap items-center gap-2">
-        {['all', 'medicine', 'vitamin', 'supplement', 'disinfectant', 'cleaning', 'egg_tray', 'packaging', 'other'].map(cat => (
+        {['all', 'medicine', 'vitamin', 'supplement', 'disinfectant', 'cleaning', 'pest_control', 'fly_control', 'egg_tray', 'packaging', 'other'].map(cat => (
           <button
             key={cat}
             onClick={() => setFilterCategory(cat)}
@@ -404,6 +404,8 @@ export const SuppliesView: React.FC = () => {
                     <option value="supplement">Supplement</option>
                     <option value="disinfectant">Disinfectant</option>
                     <option value="cleaning">Cleaning Supply</option>
+                    <option value="pest_control">Pest Control (General)</option>
+                    <option value="fly_control">Fly Control & Spraying</option>
                     <option value="egg_tray">Egg Trays</option>
                     <option value="packaging">Packaging Box/Pouch</option>
                     <option value="other">Other Supply</option>

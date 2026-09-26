@@ -39,6 +39,7 @@ import {
   ActionType,
   ActivityLog,
   PriceChangeLog,
+  DailyTask,
 } from '../types';
 import {
   DEFAULT_FARM_PROFILE,
@@ -136,6 +137,18 @@ interface FarmContextType {
   recordFeedConsumption: (log: Omit<FeedConsumptionLog, 'id' | 'cost' | 'createdAt'>) => void;
   updateFeedConsumptionLog: (id: string, updates: Partial<FeedConsumptionLog>) => void;
   deleteFeedConsumptionLog: (id: string) => void;
+
+  // Feed Analytics
+  totalFeedKgConsumedAllTime: number;
+  totalFeedBagsConsumedAllTime: number;
+  feedConsumptionRatio: number; // kg feed per egg
+  fcrPerTray: number; // kg feed per tray
+
+  // Daily Tasks Planner Board
+  dailyTasks: DailyTask[];
+  addDailyTask: (title: string, priority?: DailyTask['priority'], assignedTo?: string) => void;
+  toggleDailyTask: (id: string) => void;
+  deleteDailyTask: (id: string) => void;
 
   // Supplies
   supplyItems: SupplyItem[];
@@ -366,6 +379,38 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const [priceChangeLogs, setPriceChangeLogs] = useState<PriceChangeLog[]>(() =>
     loadStorage<PriceChangeLog[]>('price_change_logs_v2', [])
+  );
+
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>(() =>
+    loadStorage<DailyTask[]>('daily_tasks_v2', [
+      {
+        id: 'task-1',
+        title: 'Morning Egg Collection & Sorting (Houses 1-3)',
+        priority: 'high',
+        assignedTo: 'Egg Collector',
+        completed: false,
+        createdAt: new Date().toISOString(),
+        createdBy: 'Farm Manager',
+      },
+      {
+        id: 'task-2',
+        title: 'Disinfect coop walkways and fly spraying (House 2)',
+        priority: 'medium',
+        assignedTo: 'Farm Staff',
+        completed: false,
+        createdAt: new Date().toISOString(),
+        createdBy: 'Farm Manager',
+      },
+      {
+        id: 'task-3',
+        title: 'Check water pressure and nipple drinker lines',
+        priority: 'low',
+        assignedTo: 'Farm Staff',
+        completed: true,
+        createdAt: new Date().toISOString(),
+        createdBy: 'Farm Manager',
+      },
+    ])
   );
 
   const [eggGradePrices, setEggGradePrices] = useState<Record<EggGradeKey, { trayPrice: number; piecePrice: number }>>(() => {
@@ -2596,6 +2641,92 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     syncDeleteDoc('team_members', id);
   };
 
+  // Requirement 1: Feed Consumption Analytics & Cumulative Metrics
+  const totalFeedKgConsumedAllTime = useMemo(() => {
+    return feedConsumptionLogs.reduce((sum, log) => sum + (log.kgUsed || log.bagsUsed * 50), 0);
+  }, [feedConsumptionLogs]);
+
+  const totalFeedBagsConsumedAllTime = useMemo(() => {
+    return feedConsumptionLogs.reduce((sum, log) => sum + (log.bagsUsed || 0), 0);
+  }, [feedConsumptionLogs]);
+
+  const feedConsumptionRatio = useMemo(() => {
+    if (!totalGoodEggsCollected || totalGoodEggsCollected <= 0) return 0;
+    return Number((totalFeedKgConsumedAllTime / totalGoodEggsCollected).toFixed(3));
+  }, [totalFeedKgConsumedAllTime, totalGoodEggsCollected]);
+
+  const fcrPerTray = useMemo(() => {
+    const totalTrays = totalGoodEggsCollected / 30;
+    if (!totalTrays || totalTrays <= 0) return 0;
+    return Number((totalFeedKgConsumedAllTime / totalTrays).toFixed(2));
+  }, [totalFeedKgConsumedAllTime, totalGoodEggsCollected]);
+
+  // Requirement 5: Daily Task Planner Board Widget Handlers
+  const addDailyTask = (
+    title: string,
+    priority: DailyTask['priority'] = 'medium',
+    assignedTo: string = 'Staff'
+  ) => {
+    const newTask: DailyTask = {
+      id: 'TASK-' + Date.now().toString().slice(-6),
+      title: title.trim(),
+      priority,
+      assignedTo,
+      completed: false,
+      createdAt: new Date().toISOString(),
+      createdBy: activeRoleConfig.title,
+    };
+    setDailyTasks(prev => {
+      const updated = [newTask, ...prev];
+      saveStorage('daily_tasks_v2', updated);
+      return updated;
+    });
+    syncSaveDoc('daily_tasks', newTask.id, newTask);
+    logActivity('CREATED', 'Daily Instructions', `Created daily instruction task: "${title.trim()}" assigned to ${assignedTo}`);
+  };
+
+  const toggleDailyTask = (id: string) => {
+    setDailyTasks(prev => {
+      const updated = prev.map(t => (t.id === id ? { ...t, completed: !t.completed } : t));
+      saveStorage('daily_tasks_v2', updated);
+      return updated;
+    });
+  };
+
+  const deleteDailyTask = (id: string) => {
+    setDailyTasks(prev => {
+      const updated = prev.filter(t => t.id !== id);
+      saveStorage('daily_tasks_v2', updated);
+      return updated;
+    });
+    syncDeleteDoc('daily_tasks', id);
+  };
+
+  // Requirement 2: Auto-Sorting Logistics (Most Recent on Top)
+  const sortedSales = useMemo(() => {
+    return [...sales].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+  }, [sales]);
+
+  const sortedExpenses = useMemo(() => {
+    return [...expenses].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+  }, [expenses]);
+
+  const sortedEggProductionLogs = useMemo(() => {
+    return [...eggProductionLogs].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+  }, [eggProductionLogs]);
+
+  const sortedPayments = useMemo(() => {
+    return [...payments].sort((a, b) => (b.paymentDate || b.createdAt).localeCompare(a.paymentDate || a.createdAt));
+  }, [payments]);
+
+  const sortedFeedConsumptionLogs = useMemo(() => {
+    return [...feedConsumptionLogs].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+  }, [feedConsumptionLogs]);
+
+  const sortedSupplyUsageLogs = useMemo(() => {
+    return [...supplyUsageLogs].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+  }, [supplyUsageLogs]);
+
   return (
     <FarmContext.Provider
       value={{
@@ -2616,7 +2747,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         deleteFlock,
         addFlockAdjustment,
         deleteFlockAdjustment,
-        eggProductionLogs,
+        eggProductionLogs: sortedEggProductionLogs,
         addEggProductionLog,
         updateEggProductionLog,
         deleteEggProductionLog,
@@ -2635,7 +2766,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         potentialRevenue,
         actualRealizedRevenue,
         feedItems,
-        feedConsumptionLogs,
+        feedConsumptionLogs: sortedFeedConsumptionLogs,
         feedPurchaseLogs,
         addFeedItem,
         updateFeedItem,
@@ -2647,7 +2778,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateFeedConsumptionLog,
         deleteFeedConsumptionLog,
         supplyItems,
-        supplyUsageLogs,
+        supplyUsageLogs: sortedSupplyUsageLogs,
         addSupplyItem,
         updateSupplyItem,
         deleteSupplyItem,
@@ -2663,15 +2794,15 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateOrder,
         updateOrderStatus,
         deleteOrder,
-        sales,
+        sales: sortedSales,
         addSale,
         updateSale,
         deleteSale,
-        payments,
+        payments: sortedPayments,
         addPayment,
         updatePayment,
         deletePayment,
-        expenses,
+        expenses: sortedExpenses,
         addExpense,
         updateExpense,
         deleteExpense,
@@ -2735,6 +2866,14 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addTeamMember,
         updateTeamMember,
         deleteTeamMember,
+        totalFeedKgConsumedAllTime,
+        totalFeedBagsConsumedAllTime,
+        feedConsumptionRatio,
+        fcrPerTray,
+        dailyTasks,
+        addDailyTask,
+        toggleDailyTask,
+        deleteDailyTask,
         isTabAllowed,
         hasPermission,
       }}

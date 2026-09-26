@@ -66,9 +66,16 @@ export const CustomersView: React.FC = () => {
 
   const totalSalesAll = sales.reduce((sum, s) => sum + s.total, 0);
 
-  const filteredCustomers = customers.filter(
-    c => filterType === 'all' || c.customerType.toLowerCase() === filterType.toLowerCase()
-  );
+  // Requirement 2: Dynamically sort customers from highest lifetime purchase amount to lowest
+  const filteredCustomers = useMemo(() => {
+    return customers
+      .filter(c => filterType === 'all' || c.customerType.toLowerCase() === filterType.toLowerCase())
+      .sort((a, b) => {
+        const purchasesA = getCustomerMetrics(a.id).totalPurchases;
+        const purchasesB = getCustomerMetrics(b.id).totalPurchases;
+        return purchasesB - purchasesA;
+      });
+  }, [customers, filterType, sales]);
 
   const handleOpenAddModal = () => {
     setEditingCustomer(null);

@@ -184,6 +184,7 @@ export type SupplyCategory =
   | 'disinfectant'
   | 'cleaning'
   | 'pest_control'
+  | 'fly_control'
   | 'egg_tray'
   | 'packaging'
   | 'other';
@@ -531,4 +532,14 @@ export interface PriceChangeLog {
   newPrice: number;
   reason?: string;
   changedBy: string;
+}
+
+export interface DailyTask {
+  id: string;
+  title: string;
+  assignedTo?: string;
+  priority: 'low' | 'medium' | 'high';
+  completed: boolean;
+  createdAt: string;
+  createdBy: string;
 }
