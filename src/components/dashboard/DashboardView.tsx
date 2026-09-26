@@ -77,6 +77,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     hasSalesDiscrepancy,
     potentialRevenue,
     actualRealizedRevenue,
+    farmCashMetrics,
     totalFeedKgConsumedAllTime,
     totalFeedBagsConsumedAllTime,
     feedConsumptionRatio,
@@ -395,6 +396,111 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       {/* ADMIN EXCEL REPORT GENERATOR COMPONENT */}
       <ExcelReportGenerator />
+
+      {/* RTL POULTRY FINANCIAL RUNWAY & LIQUIDITY WIDGET */}
+      {hasPermission('viewFinancialMetrics') && farmCashMetrics && (
+        <div className={`p-5 rounded-2xl border shadow-md space-y-4 transition-all ${
+          farmCashMetrics.runwayStatus === 'CRITICAL'
+            ? 'bg-gradient-to-br from-rose-950 via-slate-900 to-slate-900 border-rose-600 text-white'
+            : farmCashMetrics.runwayStatus === 'WARNING'
+            ? 'bg-gradient-to-br from-amber-950 via-slate-900 to-slate-900 border-amber-500 text-white'
+            : 'bg-gradient-to-br from-slate-900 via-slate-900 to-emerald-950 border-slate-800 text-white'
+        }`}>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className={`p-2 rounded-xl border ${
+                farmCashMetrics.runwayStatus === 'CRITICAL'
+                  ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                  : farmCashMetrics.runwayStatus === 'WARNING'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                  : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+              }`}>
+                <Landmark className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-sm text-white flex items-center gap-2">
+                  <span>RTL Poultry Financial Runway & Liquidity Engine</span>
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Real-time operational runway calculated from accessible liquid cash streams vs daily feed/operating costs.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 ${
+                farmCashMetrics.runwayStatus === 'CRITICAL'
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                  : farmCashMetrics.runwayStatus === 'WARNING'
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+              }`}>
+                {farmCashMetrics.runwayStatus === 'CRITICAL' ? '🚨 CRITICAL RUNWAY' : farmCashMetrics.runwayStatus === 'WARNING' ? '⚠️ WARNING RUNWAY' : '✅ HEALTHY RUNWAY'}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Total Accessible Cash */}
+            <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1">
+              <span className="text-xs text-slate-400 font-medium">Total Accessible Cash On Hand</span>
+              <div className="text-xl font-bold font-heading text-emerald-400 font-mono">
+                {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(farmCashMetrics.totalAccessibleCashOnHand)}
+              </div>
+              <div className="text-[11px] text-slate-400 truncate">
+                Liquid cash after feed reserves
+              </div>
+            </div>
+
+            {/* Days Operational Runway */}
+            <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1">
+              <span className="text-xs text-slate-400 font-medium">Days of Operational Runway</span>
+              <div className={`text-xl font-bold font-heading font-mono ${
+                farmCashMetrics.runwayStatus === 'CRITICAL'
+                  ? 'text-rose-400'
+                  : farmCashMetrics.runwayStatus === 'WARNING'
+                  ? 'text-amber-300'
+                  : 'text-emerald-400'
+              }`}>
+                {farmCashMetrics.daysOperationalRunway} <span className="text-xs font-semibold text-slate-400">days</span>
+              </div>
+              <div className="text-[11px] text-slate-400 truncate">
+                {farmCashMetrics.runwayStatus === 'CRITICAL'
+                  ? 'Immediate risk: < 30 days reserve'
+                  : farmCashMetrics.runwayStatus === 'WARNING'
+                  ? 'Caution: 30-89 days reserve'
+                  : 'Optimal: ≥ 90 days reserve'}
+              </div>
+            </div>
+
+            {/* Avg Daily Operating Expenses */}
+            <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1">
+              <span className="text-xs text-slate-400 font-medium">Avg Daily Operating Expenses</span>
+              <div className="text-xl font-bold font-heading text-amber-300 font-mono">
+                {new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(farmCashMetrics.averageDailyOperatingExpenses)}
+              </div>
+              <div className="text-[11px] text-slate-400 truncate">
+                Layer feed mash, labor, & biosecurity/day
+              </div>
+            </div>
+
+            {/* Physical Vault Cash vs Bank Reserves */}
+            <div className="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1">
+              <span className="text-xs text-slate-400 font-medium">Physical Cash vs Bank/Wallets</span>
+              <div className="text-xs font-mono space-y-0.5 pt-0.5">
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Vault Cash:</span>
+                  <span className="font-bold text-white">{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(farmCashMetrics.physicalCash)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Bank & Wallets:</span>
+                  <span className="font-bold text-indigo-300">{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(farmCashMetrics.bankBalances + farmCashMetrics.digitalWallets)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Active Alerts Banner if any */}
       {alerts.length > 0 && (
@@ -1054,7 +1160,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* 5. RULE 2: Cash on Hand (Vault / Register) */}
+            {/* 5. Cash on Hand (Vault / Register) */}
             <div
               onClick={() => onNavigate('cashflow')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
@@ -1063,10 +1169,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 <span>💵 Cash on Hand</span>
                 <CircleDollarSign className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
               </div>
-              <div className={`text-base font-bold font-heading ${cashOnHand < 0 ? 'text-rose-600' : 'text-emerald-700'}`}>
-                {formatCurrency(cashOnHand)}
+              <div className={`text-base font-bold font-heading ${
+                farmCashMetrics
+                  ? (farmCashMetrics.physicalCash < 0 ? 'text-rose-600' : 'text-emerald-700')
+                  : (cashOnHand < 0 ? 'text-rose-600' : 'text-emerald-700')
+              }`}>
+                {formatCurrency(farmCashMetrics ? farmCashMetrics.physicalCash : cashOnHand)}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5 truncate" title={`Cash Recv (${formatCurrency(totalCashPaymentsReceived)}) - [Cash Exp (${formatCurrency(totalCashExpensesPaidOut)}) + Cash Dep (${formatCurrency(totalCashDepositedToBank)})]`}>
+              <div className="text-[11px] text-slate-400 mt-0.5 truncate" title="Physical Cash in Vault / Register">
                 Vault / Register Balance
               </div>
             </div>

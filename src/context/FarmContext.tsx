@@ -40,6 +40,7 @@ import {
   ActivityLog,
   PriceChangeLog,
   DailyTask,
+  FarmCashMetrics,
 } from '../types';
 import {
   DEFAULT_FARM_PROFILE,
@@ -210,9 +211,11 @@ export interface FarmContextType {
   updateBankDeposit: (id: string, updates: Partial<BankDeposit>) => void;
   deleteBankDeposit: (id: string) => void;
 
-  // Cash on Hand
+  // Cash on Hand (Decoupled State Registry)
   cashOnHand: number;
+  setCashOnHand: React.Dispatch<React.SetStateAction<number>>;
   setCashOnHandManualAdjustment: (newAmount: number, reason: string) => void;
+  farmCashMetrics: FarmCashMetrics;
 
   // Trash & Recycle Bin
   trashItems: TrashItem[];
@@ -258,9 +261,11 @@ export interface FarmContextType {
   changeUserPassword: (role: UserRole, currentPassword: string, newPassword: string) => { success: boolean; message: string };
   adminResetUserPassword: (targetRole: UserRole, newPassword: string) => { success: boolean; message: string };
 
-  // Activity Audit Logs
+  // Activity Audit Logs (Full Management)
   activityLogs: ActivityLog[];
   logActivity: (actionType: ActionType, module: string, details: string, actorRole?: UserRole) => void;
+  updateActivityLog: (id: string, updates: Partial<ActivityLog>) => void;
+  deleteActivityLog: (id: string) => void;
 
   // Market Pricing & Price Change Log History
   priceChangeLogs: PriceChangeLog[];
@@ -358,6 +363,26 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [internalTransfers, setInternalTransfers] = useState<InternalTransfer[]>(() =>
     loadStorage('internal_transfers', [])
   );
+
+  // Core Mathematical Cash Rule:
+  // Cash on Hand = Total Sales (Revenue / Payments Received) - Total Expenses - Total Money Deposited into Bank Account.
+  const computedNetCash = useMemo(() => {
+    const totalPaymentsReceived = payments.reduce((sum, p) => sum + p.amount, 0);
+    const totalExpensesAmount = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalBankDepositsAmount = bankDeposits.reduce((sum, d) => sum + d.amount, 0);
+
+    return totalPaymentsReceived - totalExpensesAmount - totalBankDepositsAmount;
+  }, [payments, expenses, bankDeposits]);
+
+  const [cashOnHand, setCashOnHand] = useState<number>(() => {
+    const saved = loadStorage<number>('cash_on_hand', null as any);
+    if (saved !== null && saved !== undefined && typeof saved === 'number' && saved !== 0) return saved;
+    return computedNetCash;
+  });
+
+  useEffect(() => {
+    saveStorage('cash_on_hand', cashOnHand);
+  }, [cashOnHand]);
 
   const [trashItems, setTrashItems] = useState<TrashItem[]>(() => loadStorage('trash_items', []));
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() =>
@@ -507,6 +532,24 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     syncSaveDoc('activity_logs', newLog.id, newLog);
   };
 
+  const updateActivityLog = (id: string, updates: Partial<ActivityLog>) => {
+    setActivityLogs(prev => {
+      const updated = prev.map(l => (l.id === id ? { ...l, ...updates } : l));
+      setTimeout(() => saveStorage('activity_logs_v2', updated), 0);
+      return updated;
+    });
+    syncUpdateDoc('activity_logs', id, updates);
+  };
+
+  const deleteActivityLog = (id: string) => {
+    setActivityLogs(prev => {
+      const updated = prev.filter(l => l.id !== id);
+      setTimeout(() => saveStorage('activity_logs_v2', updated), 0);
+      return updated;
+    });
+    syncDeleteDoc('activity_logs', id);
+  };
+
   // Listen for auth state
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, user => {
@@ -533,7 +576,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           setSyncStatus('connected');
         }
       }),
-      subscribeDoc<{ amount: number }>('farm_finances', 'cash', () => {
+      subscribeDoc<{ amount: number }>('farm_finances', 'cash', remoteCash => {
+        if (remoteProfileCash && typeof remoteCash?.amount === 'number') {
+          setCashOnHand(remoteCash.amount);
+        }
         setLastSyncedAt(new Date());
         setSyncStatus('connected');
       }),
@@ -719,23 +765,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return sales.reduce((sum, s) => sum + s.total, 0);
   }, [sales]);
 
-  // Dynamic Cash on Hand Calculation
-  const cashOnHand = useMemo(() => {
-    const totalCashPaymentsReceived = payments
-      .filter(p => p.accountReceivedInto === 'cash_on_hand' || p.paymentMethod === 'Cash')
-      .reduce((sum, p) => sum + p.amount, 0);
-
-    const totalCashExpensesPaidOut = expenses
-      .filter(e => e.paymentAccount === 'cash_on_hand' || !e.paymentAccount)
-      .reduce((sum, e) => sum + e.amount, 0);
-
-    const totalCashDepositedToBank = bankDeposits
-      .filter(d => d.sourceAccount === 'Cash on Hand' || !d.sourceAccount)
-      .reduce((sum, d) => sum + d.amount, 0);
-
-    return totalCashPaymentsReceived - (totalCashExpensesPaidOut + totalCashDepositedToBank);
-  }, [payments, expenses, bankDeposits]);
-
   // Feed Analytics
   const totalFeedKgConsumedAllTime = useMemo(() => {
     return feedConsumptionLogs.reduce((sum, log) => sum + (log.kgUsed || log.bagsUsed * 50), 0);
@@ -781,6 +810,57 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [flocks, feedConsumptionLogs, eggProductionLogs]);
 
+  // REAL-TIME RTL POULTRY FINANCIAL RUNWAY & CASH ENGINE
+  const farmCashMetrics: FarmCashMetrics = useMemo(() => {
+    const physicalCash = computedNetCash;
+
+    const bankBalances = bankAccounts
+      .filter(b => !b.bankName.toLowerCase().includes('gcash') && !b.bankName.toLowerCase().includes('maya'))
+      .reduce((sum, b) => sum + b.currentBalance, 0);
+
+    const digitalWallets = bankAccounts
+      .filter(b => b.bankName.toLowerCase().includes('gcash') || b.bankName.toLowerCase().includes('maya'))
+      .reduce((sum, b) => sum + b.currentBalance, 0);
+
+    const totalLiquidReserves = bankBalances + digitalWallets;
+    const restrictedFunds = Number((totalLiquidReserves * 0.15).toFixed(2));
+
+    const totalAccessibleCashOnHand = Number((physicalCash + bankBalances + digitalWallets - restrictedFunds).toFixed(2));
+
+    const totalExpenses30d = expenses.reduce((sum, e) => sum + e.amount, 0);
+    const totalFeedCost30d = feedConsumptionLogs.reduce((sum, f) => sum + (f.cost || 0), 0);
+    const combined30dOutflow = totalExpenses30d + totalFeedCost30d;
+
+    const daysCount = 30;
+    const averageDailyOperatingExpenses = combined30dOutflow > 0
+      ? Number((combined30dOutflow / daysCount).toFixed(2))
+      : 1000;
+
+    const daysOperationalRunway = averageDailyOperatingExpenses > 0
+      ? Math.round(totalAccessibleCashOnHand / averageDailyOperatingExpenses)
+      : 999;
+
+    let runwayStatus: 'HEALTHY' | 'WARNING' | 'CRITICAL' = 'HEALTHY';
+    if (daysOperationalRunway < 30) {
+      runwayStatus = 'CRITICAL';
+    } else if (daysOperationalRunway < 90) {
+      runwayStatus = 'WARNING';
+    } else {
+      runwayStatus = 'HEALTHY';
+    }
+
+    return {
+      physicalCash,
+      bankBalances,
+      digitalWallets,
+      restrictedFunds,
+      totalAccessibleCashOnHand,
+      averageDailyOperatingExpenses,
+      daysOperationalRunway,
+      runwayStatus,
+    };
+  }, [cashOnHand, bankAccounts, expenses, feedConsumptionLogs]);
+
   // Auto-Sorting Logistics (Most Recent Entries Always on Top)
   const sortedSales = useMemo(() => {
     return [...sales].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
@@ -818,7 +898,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return [...bankDeposits].sort((a, b) => (b.depositDate || b.createdAt || '').localeCompare(a.depositDate || a.createdAt || ''));
   }, [bankDeposits]);
 
-  // --- ENTITY CRUD HANDLERS ---
+  // --- ENTITY CRUD HANDLERS WITH UNIVERSAL ACTIVITY LOGGING ---
   const updateProfile = (updates: Partial<FarmProfile>) => {
     const updated = { ...profile, ...updates };
     setProfile(updated);
@@ -850,8 +930,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteFarm = (id: string) => {
+    const target = farms.find(f => f.id === id);
     setFarms(prev => prev.filter(f => f.id !== id));
     syncDeleteDoc('farms', id);
+    if (target) logActivity('DELETED', 'Farm Settings', `Deleted farm location: ${target.name}`);
   };
 
   const addHouse = (farmId: string, name: string, code: string, capacity: number, houseType: string, notes?: string): FarmHouse => {
@@ -872,8 +954,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteHouse = (id: string) => {
+    const target = houses.find(h => h.id === id);
     setHouses(prev => prev.filter(h => h.id !== id));
     syncDeleteDoc('houses', id);
+    if (target) logActivity('DELETED', 'Farm Settings', `Deleted house: ${target.name}`);
   };
 
   const addFlock = (flockData: Omit<Flock, 'id' | 'currentPopulation' | 'createdAt'>): Flock => {
@@ -892,6 +976,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateFlock = (id: string, updates: Partial<Flock>) => {
     setFlocks(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
     syncUpdateDoc('flocks', id, updates);
+    logActivity('EDITED', 'Flock Management', `Updated flock batch ${id}`);
   };
 
   const deleteFlock = (id: string) => {
@@ -932,11 +1017,13 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setFlocks(prev => prev.map(f => (f.id === flockId ? { ...f, currentPopulation: nextPop } : f)));
     syncSaveDoc('flock_adjustments', adjustment.id, adjustment);
     syncUpdateDoc('flocks', flockId, { currentPopulation: nextPop });
+    logActivity('CREATED', 'Flock Management', `Recorded flock adjustment: ${type.toUpperCase()} (${quantity} birds) - ${reason}`);
   };
 
   const deleteFlockAdjustment = (id: string) => {
     setFlockAdjustments(prev => prev.filter(a => a.id !== id));
     syncDeleteDoc('flock_adjustments', id);
+    logActivity('DELETED', 'Flock Management', `Deleted flock adjustment record ${id}`);
   };
 
   const addEggProductionLog = (log: Omit<EggProductionLog, 'id' | 'createdAt'>): EggProductionLog => {
@@ -975,11 +1062,13 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setEggAdjustments(prev => [newAdj, ...prev]);
     syncSaveDoc('egg_adjustments', newAdj.id, newAdj);
+    logActivity('CREATED', 'Egg Inventory', `Recorded egg stock adjustment: ${adj.grade.toUpperCase()} (${adj.quantityPieces} pcs)`);
   };
 
   const deleteEggAdjustment = (id: string) => {
     setEggAdjustments(prev => prev.filter(a => a.id !== id));
     syncDeleteDoc('egg_adjustments', id);
+    logActivity('DELETED', 'Egg Inventory', `Deleted egg inventory adjustment ${id}`);
   };
 
   const addFeedItem = (itemData: Omit<FeedItem, 'id' | 'currentBags' | 'currentKg' | 'costPerKg' | 'createdAt'>, initialBags = 0): FeedItem => {
@@ -998,17 +1087,21 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     setFeedItems(prev => [...prev, newItem]);
     syncSaveDoc('feed_items', newItem.id, newItem);
+    logActivity('CREATED', 'Feed Management', `Added feed item: ${newItem.brand} (${newItem.feedType})`);
     return newItem;
   };
 
   const updateFeedItem = (id: string, updates: Partial<FeedItem>) => {
     setFeedItems(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
     syncUpdateDoc('feed_items', id, updates);
+    logActivity('EDITED', 'Feed Management', `Updated feed item ${id}`);
   };
 
   const deleteFeedItem = (id: string) => {
+    const target = feedItems.find(f => f.id === id);
     setFeedItems(prev => prev.filter(f => f.id !== id));
     syncDeleteDoc('feed_items', id);
+    if (target) logActivity('DELETED', 'Feed Management', `Deleted feed item: ${target.brand}`);
   };
 
   const recordFeedPurchase = (logData: Omit<FeedPurchaseLog, 'id' | 'createdAt'>) => {
@@ -1032,16 +1125,19 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return f;
       })
     );
+    logActivity('CREATED', 'Feed Management', `Recorded feed batch purchase: ${logData.bags} bags ${logData.feedName} (₱${logData.totalCost.toLocaleString()})`);
   };
 
   const updateFeedPurchaseLog = (id: string, updates: Partial<FeedPurchaseLog>) => {
     setFeedPurchaseLogs(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
     syncUpdateDoc('feed_purchase_logs', id, updates);
+    logActivity('EDITED', 'Feed Management', `Updated feed purchase log ${id}`);
   };
 
   const deleteFeedPurchaseLog = (id: string) => {
     setFeedPurchaseLogs(prev => prev.filter(f => f.id !== id));
     syncDeleteDoc('feed_purchase_logs', id);
+    logActivity('DELETED', 'Feed Management', `Deleted feed purchase log ${id}`);
   };
 
   const recordFeedConsumption = (logData: Omit<FeedConsumptionLog, 'id' | 'cost' | 'createdAt'>) => {
@@ -1072,14 +1168,29 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return f;
       })
     );
+
+    logActivity('CREATED', 'Feed Management', `Recorded feed consumption log: ${logData.bagsUsed} bags used`);
   };
 
   const updateFeedConsumptionLog = (id: string, updates: Partial<FeedConsumptionLog>) => {
     setFeedConsumptionLogs(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
     syncUpdateDoc('feed_consumption_logs', id, updates);
+    logActivity('EDITED', 'Feed Management', `Updated feed consumption log ${id}`);
   };
 
   const deleteFeedConsumptionLog = (id: string) => {
+    const target = feedConsumptionLogs.find(f => f.id === id);
+    if (target) {
+      moveToTrash(
+        'feed_consumption',
+        id,
+        `Feed Consumption: ${target.bagsUsed} bags (${target.kgUsed || target.bagsUsed * 50} kg)`,
+        `Recorded on ${target.date}`,
+        target.date,
+        target
+      );
+      logActivity('DELETED', 'Feed & Consumption', `Moved feed consumption log ${id} (${target.bagsUsed} bags) to trash`);
+    }
     setFeedConsumptionLogs(prev => prev.filter(f => f.id !== id));
     syncDeleteDoc('feed_consumption_logs', id);
   };
@@ -1115,11 +1226,13 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateSupplyUsageLog = (id: string, updates: Partial<SupplyUsageLog>) => {
     setSupplyUsageLogs(prev => prev.map(s => (s.id === id ? { ...s, ...updates } : s)));
     syncUpdateDoc('supply_usage_logs', id, updates);
+    logActivity('EDITED', 'Supplies & Pest Control', `Updated supply usage log ${id}`);
   };
 
   const deleteSupplyUsageLog = (id: string) => {
     setSupplyUsageLogs(prev => prev.filter(s => s.id !== id));
     syncDeleteDoc('supply_usage_logs', id);
+    logActivity('DELETED', 'Supplies & Pest Control', `Deleted supply usage log ${id}`);
   };
 
   const recordSupplyUsage = (log: Omit<SupplyUsageLog, 'id' | 'createdAt'>) => {
@@ -1141,6 +1254,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return s;
       })
     );
+
+    logActivity('CREATED', 'Supplies & Pest Control', `Recorded supply usage: ${log.quantity} ${log.unit} of ${log.supplyName}`);
   };
 
   const addCustomer = (custData: Omit<Customer, 'id' | 'createdAt'>): Customer => {
@@ -1192,20 +1307,28 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setOrders(prev => [newOrder, ...prev]);
     syncSaveDoc('orders', newOrder.id, newOrder);
+    logActivity('CREATED', 'Order Management', `Created order ${newOrder.orderNumber} for ${newOrder.customerName}: ₱${newOrder.total.toLocaleString()}`);
     return newOrder;
   };
 
   const updateOrder = (id: string, updates: Partial<FarmOrder>) => {
     setOrders(prev => prev.map(o => (o.id === id ? { ...o, ...updates } : o)));
     syncUpdateDoc('orders', id, updates);
+    logActivity('EDITED', 'Order Management', `Updated customer order ${id}`);
   };
 
   const updateOrderStatus = (id: string, status: FarmOrder['status']) => {
     setOrders(prev => prev.map(o => (o.id === id ? { ...o, status } : o)));
     syncUpdateDoc('orders', id, { status });
+    logActivity('EDITED', 'Order Management', `Updated order ${id} status to ${status}`);
   };
 
   const deleteOrder = (id: string) => {
+    const target = orders.find(o => o.id === id);
+    if (target) {
+      moveToTrash('order', id, `Order: ${target.orderNumber}`, `₱${target.total.toLocaleString()}`, target.date, target);
+      logActivity('DELETED', 'Order Management', `Moved order ${target.orderNumber} to trash`);
+    }
     setOrders(prev => prev.filter(o => o.id !== id));
     syncDeleteDoc('orders', id);
   };
@@ -1293,9 +1416,15 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updatePayment = (id: string, updates: Partial<CustomerPayment>) => {
     setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
     syncUpdateDoc('payments', id, updates);
+    logActivity('EDITED', 'Customer Payments', `Updated payment record ${id}`);
   };
 
   const deletePayment = (id: string) => {
+    const target = payments.find(p => p.id === id);
+    if (target) {
+      moveToTrash('payment', id, `Payment: ${target.paymentNumber}`, `₱${target.amount.toLocaleString()}`, target.paymentDate, target);
+      logActivity('DELETED', 'Customer Payments', `Moved payment record ${target.paymentNumber} to trash`);
+    }
     setPayments(prev => prev.filter(p => p.id !== id));
     syncDeleteDoc('payments', id);
   };
@@ -1344,17 +1473,21 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setBankAccounts(prev => [...prev, newBank]);
     syncSaveDoc('bank_accounts', newBank.id, newBank);
+    logActivity('CREATED', 'Bank Accounts', `Registered bank account: ${bankName} (${accountName})`);
     return newBank;
   };
 
   const updateBankAccount = (id: string, updates: Partial<BankAccount>) => {
     setBankAccounts(prev => prev.map(b => (b.id === id ? { ...b, ...updates } : b)));
     syncUpdateDoc('bank_accounts', id, updates);
+    logActivity('EDITED', 'Bank Accounts', `Updated bank account ${id}`);
   };
 
   const deleteBankAccount = (id: string) => {
+    const target = bankAccounts.find(b => b.id === id);
     setBankAccounts(prev => prev.filter(b => b.id !== id));
     syncDeleteDoc('bank_accounts', id);
+    if (target) logActivity('DELETED', 'Bank Accounts', `Deleted bank account: ${target.bankName}`);
   };
 
   const recordBankDeposit = (depositData: Omit<BankDeposit, 'id' | 'depositNumber' | 'createdAt'>): BankDeposit => {
@@ -1387,15 +1520,19 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const updateBankDeposit = (id: string, updates: Partial<BankDeposit>) => {
     setBankDeposits(prev => prev.map(d => (d.id === id ? { ...d, ...updates } : d)));
     syncUpdateDoc('bank_deposits', id, updates);
+    logActivity('EDITED', 'Bank Deposits', `Updated bank deposit ${id}`);
   };
 
   const deleteBankDeposit = (id: string) => {
+    const target = bankDeposits.find(d => d.id === id);
     setBankDeposits(prev => prev.filter(d => d.id !== id));
     syncDeleteDoc('bank_deposits', id);
+    if (target) logActivity('DELETED', 'Bank Deposits', `Deleted bank deposit: ${target.depositNumber}`);
   };
 
   const setCashOnHandManualAdjustment = (newAmount: number, reason: string) => {
-    logActivity('SETTINGS_CHANGED', 'Cashflow', `Manual Cash adjustment to ₱${newAmount}: ${reason}`);
+    setCashOnHand(newAmount);
+    logActivity('SETTINGS_CHANGED', 'Cashflow', `Manual Cash adjustment to ₱${newAmount.toLocaleString()}: ${reason}`);
   };
 
   // Trash & Recycle Bin Handlers
@@ -1577,6 +1714,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       await batchUploadCollection('flocks', flocks);
       await batchUploadCollection('sales', sales);
       await batchUploadCollection('expenses', expenses);
+      await syncSaveDoc('farm_finances', 'cash', { amount: cashOnHand, updatedAt: new Date().toISOString() });
       setLastSyncedAt(new Date());
     } catch (err) {
       console.error('Cloud Sync failed:', err);
@@ -1975,7 +2113,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateBankDeposit,
         deleteBankDeposit,
         cashOnHand,
+        setCashOnHand,
         setCashOnHandManualAdjustment,
+        farmCashMetrics,
         trashItems,
         moveToTrash,
         restoreFromTrash,
@@ -2007,6 +2147,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         adminResetUserPassword,
         activityLogs: sortedActivityLogs,
         logActivity,
+        updateActivityLog,
+        deleteActivityLog,
         priceChangeLogs: sortedPriceChangeLogs,
         eggGradePrices,
         updateEggGradePrice,

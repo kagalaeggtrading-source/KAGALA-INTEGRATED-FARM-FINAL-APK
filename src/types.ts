@@ -543,3 +543,14 @@ export interface DailyTask {
   createdAt: string;
   createdBy: string;
 }
+
+export interface FarmCashMetrics {
+  physicalCash: number;
+  bankBalances: number;
+  digitalWallets: number;
+  restrictedFunds: number;
+  totalAccessibleCashOnHand: number;
+  averageDailyOperatingExpenses: number;
+  daysOperationalRunway: number;
+  runwayStatus: 'HEALTHY' | 'WARNING' | 'CRITICAL';
+}

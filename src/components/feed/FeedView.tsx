@@ -14,9 +14,10 @@ import {
   Layers,
   History,
   Trash2,
+  Edit2,
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '../../constants';
-import { FeedItem } from '../../types';
+import { FeedItem, FeedConsumptionLog } from '../../types';
 
 export const FeedView: React.FC = () => {
   const {
@@ -27,6 +28,8 @@ export const FeedView: React.FC = () => {
     feedPurchaseLogs,
     recordFeedPurchase,
     recordFeedConsumption,
+    updateFeedConsumptionLog,
+    deleteFeedConsumptionLog,
     flocks,
     houses,
     bankAccounts,
@@ -35,6 +38,7 @@ export const FeedView: React.FC = () => {
   const [showAddFeedModal, setShowAddFeedModal] = useState(false);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showConsumptionModal, setShowConsumptionModal] = useState(false);
+  const [editingConsLog, setEditingConsLog] = useState<FeedConsumptionLog | null>(null);
 
   // New Feed Type Form
   const [feedType, setFeedType] = useState('Layer 1 Mash');
@@ -126,18 +130,49 @@ export const FeedView: React.FC = () => {
     const flock = flocks.find(f => f.id === consFlockId) || flocks[0];
     if (!item) return;
 
-    recordFeedConsumption({
-      date: consDate,
-      farmId: flock?.farmId || 'default',
-      houseId: flock?.houseId || 'default',
-      flockId: flock?.id || 'default',
-      feedItemId: item.id,
-      bagsUsed: Number(consBags),
-      kgUsed: Number(consKg > 0 ? consKg : consBags * item.bagWeightKg),
-      notes: consNotes,
-    });
+    if (editingConsLog) {
+      updateFeedConsumptionLog(editingConsLog.id, {
+        date: consDate,
+        farmId: flock?.farmId || 'default',
+        houseId: flock?.houseId || 'default',
+        flockId: flock?.id || 'default',
+        feedItemId: item.id,
+        bagsUsed: Number(consBags),
+        kgUsed: Number(consKg > 0 ? consKg : consBags * item.bagWeightKg),
+        notes: consNotes,
+      });
+      setEditingConsLog(null);
+    } else {
+      recordFeedConsumption({
+        date: consDate,
+        farmId: flock?.farmId || 'default',
+        houseId: flock?.houseId || 'default',
+        flockId: flock?.id || 'default',
+        feedItemId: item.id,
+        bagsUsed: Number(consBags),
+        kgUsed: Number(consKg > 0 ? consKg : consBags * item.bagWeightKg),
+        notes: consNotes,
+      });
+    }
 
     setShowConsumptionModal(false);
+  };
+
+  const handleEditConsLog = (log: FeedConsumptionLog) => {
+    setEditingConsLog(log);
+    setConsDate(log.date);
+    setConsFlockId(log.flockId || flocks[0]?.id || '');
+    setConsFeedId(log.feedItemId);
+    setConsBags(log.bagsUsed);
+    setConsKg(log.kgUsed);
+    setConsNotes(log.notes || '');
+    setShowConsumptionModal(true);
+  };
+
+  const handleDeleteConsLog = (logId: string) => {
+    if (confirm('Are you sure you want to delete this feed consumption log? This action will move the record to the trash.')) {
+      deleteFeedConsumptionLog(logId);
+    }
   };
 
   return (
@@ -178,7 +213,11 @@ export const FeedView: React.FC = () => {
                 alert('Please add a Feed Type first.');
                 return;
               }
+              setEditingConsLog(null);
               setConsFeedId(feedItems[0].id);
+              setConsBags(2);
+              setConsKg(100);
+              setConsNotes('');
               setShowConsumptionModal(true);
             }}
             className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs"
@@ -198,86 +237,73 @@ export const FeedView: React.FC = () => {
 
       {/* Aggregate Telemetry */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Current Stock</div>
-          <div className="text-xl font-bold text-amber-800 font-heading mt-1">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="text-xs text-slate-500 font-medium">Total Feed Stock</div>
+          <div className="text-xl font-bold text-slate-900 font-heading mt-1">
             {formatNumber(totalStockBags)} <span className="text-xs font-normal text-slate-500">bags</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">{formatNumber(totalStockKg)} kg total</div>
+          <div className="text-[11px] text-slate-400 mt-0.5 font-mono">{formatNumber(totalStockKg)} kg total</div>
         </div>
 
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
           <div className="text-xs text-slate-500 font-medium">Stock Asset Value</div>
-          <div className="text-xl font-bold text-slate-900 font-heading mt-1">
+          <div className="text-xl font-bold text-emerald-700 font-heading mt-1">
             {formatCurrency(totalStockValue)}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Inventory value</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Physical feed valuation</div>
         </div>
 
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Feed Used Today</div>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="text-xs text-slate-500 font-medium">Consumed Today ({todayStr})</div>
+          <div className="text-xl font-bold text-amber-800 font-heading mt-1">
+            {todayBagsConsumed} <span className="text-xs font-normal text-slate-500">bags ({todayKgConsumed} kg)</span>
+          </div>
+          <div className="text-[11px] text-slate-400 mt-0.5">Daily mash intake</div>
+        </div>
+
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+          <div className="text-xs text-slate-500 font-medium">Avg Daily Intake</div>
           <div className="text-xl font-bold text-slate-900 font-heading mt-1">
-            {todayBagsConsumed} <span className="text-xs font-normal text-slate-500">bags</span>
+            {avgDailyKg.toFixed(0)} <span className="text-xs font-normal text-slate-500">kg/day</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">{todayKgConsumed} kg today</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">~{(avgDailyKg / 50).toFixed(1)} bags/day</div>
         </div>
 
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Avg Daily Usage</div>
-          <div className="text-xl font-bold text-slate-700 font-heading mt-1">
-            {avgDailyKg.toFixed(1)} <span className="text-xs font-normal text-slate-500">kg/day</span>
+        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs col-span-2 sm:col-span-1">
+          <div className="text-xs text-slate-500 font-medium">Stock Runway Estimate</div>
+          <div className={`text-xl font-bold font-heading mt-1 ${daysRemainingEstimate <= 3 ? 'text-rose-600' : 'text-slate-900'}`}>
+            ~{daysRemainingEstimate} <span className="text-xs font-normal text-slate-500">days left</span>
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Historical average</div>
-        </div>
-
-        <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-          <div className="text-xs text-slate-500 font-medium">Days Stock Remaining</div>
-          <div className="text-xl font-bold text-emerald-700 font-heading mt-1">
-            {daysRemainingEstimate > 0 ? `${daysRemainingEstimate} days` : '—'}
-          </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">Runway before stockout</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">At current daily burn rate</div>
         </div>
       </div>
 
-      {/* Feed Inventory Table */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+      {/* Feed Types Registry */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 space-y-3">
+        <div className="flex items-center justify-between">
           <h3 className="font-heading font-bold text-sm text-slate-900">
-            Feed Items In Stock ({feedItems.length})
+            Feed Products Inventory ({feedItems.length})
           </h3>
-          <span className="text-xs text-slate-500">Formula: Beginning + Purchases - Consumption = Stock</span>
+          <span className="text-xs text-slate-500">Stock per feed formulation</span>
         </div>
 
         {feedItems.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-xs">
-            <Wheat className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <p className="font-medium text-slate-600">Zero feed items registered</p>
-            <p className="mt-1 text-slate-400 max-w-sm mx-auto">
-              Add your farm's feed brands (e.g., Layer 1, Layer 2) to track bag inventories and daily flock consumption.
-            </p>
-            <button
-              onClick={() => setShowAddFeedModal(true)}
-              className="mt-4 inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3.5 py-2 rounded-lg transition-colors cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Add Feed Brand / Type</span>
-            </button>
+          <div className="text-center py-8 text-slate-400 text-xs border border-dashed border-slate-200 rounded-lg">
+            No feed products registered yet. Click "+ Feed Product" above.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 border-b border-slate-200 font-semibold">
                 <tr>
-                  <th className="p-3">Feed Type</th>
-                  <th className="p-3">Brand</th>
-                  <th className="p-3">Supplier</th>
-                  <th className="p-3 text-right">Bag Weight</th>
-                  <th className="p-3 text-right font-bold text-amber-800">Current Bags</th>
-                  <th className="p-3 text-right font-bold">Current KG</th>
-                  <th className="p-3 text-right">Cost / Bag</th>
-                  <th className="p-3 text-right">Cost / KG</th>
-                  <th className="p-3 text-center">Alert Status</th>
-                  <th className="p-3 text-right">Action</th>
+                  <th className="p-2.5">Brand / Supplier</th>
+                  <th className="p-2.5">Feed Type</th>
+                  <th className="p-2.5 text-right font-bold text-slate-900">Available Bags</th>
+                  <th className="p-2.5 text-right">Stock (KG)</th>
+                  <th className="p-2.5 text-right">Cost / Bag</th>
+                  <th className="p-2.5 text-right">Cost / KG</th>
+                  <th className="p-2.5 text-center">Status</th>
+                  <th className="p-2.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -285,40 +311,35 @@ export const FeedView: React.FC = () => {
                   const isLow = item.currentBags <= item.minimumBagsAlert;
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/70">
-                      <td className="p-3 font-semibold text-slate-900">{item.feedType}</td>
-                      <td className="p-3 text-slate-700">{item.brand}</td>
-                      <td className="p-3 text-slate-500">{item.supplier}</td>
-                      <td className="p-3 text-right font-mono">{item.bagWeightKg} kg</td>
-                      <td className="p-3 text-right font-mono font-bold text-amber-900 text-sm">
-                        {item.currentBags}
+                      <td className="p-2.5 font-bold text-slate-900">
+                        {item.brand}
+                        <span className="text-[11px] font-normal text-slate-400 block">{item.supplier}</span>
                       </td>
-                      <td className="p-3 text-right font-mono font-bold text-slate-900">
-                        {formatNumber(item.currentKg)} kg
+                      <td className="p-2.5 text-slate-800">{item.feedType}</td>
+                      <td className="p-2.5 text-right font-mono font-bold text-slate-900 text-sm">
+                        {item.currentBags} <span className="text-xs font-normal text-slate-500">bags</span>
                       </td>
-                      <td className="p-3 text-right font-mono text-slate-700">
-                        {formatCurrency(item.costPerBag)}
-                      </td>
-                      <td className="p-3 text-right font-mono text-slate-700">
-                        {formatCurrency(item.costPerKg)}
-                      </td>
-                      <td className="p-3 text-center">
+                      <td className="p-2.5 text-right font-mono text-slate-700">{item.currentKg} kg</td>
+                      <td className="p-2.5 text-right font-mono text-slate-800">{formatCurrency(item.costPerBag)}</td>
+                      <td className="p-2.5 text-right font-mono text-slate-600">{formatCurrency(item.costPerKg)}</td>
+                      <td className="p-2.5 text-center">
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            isLow ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                            isLow ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {isLow ? `Low Stock (≤${item.minimumBagsAlert})` : 'Normal'}
+                          {isLow ? 'LOW STOCK' : 'OK'}
                         </span>
                       </td>
-                      <td className="p-3 text-right">
+                      <td className="p-2.5 text-right">
                         <button
                           onClick={() => {
-                            if (confirm(`Delete feed item ${item.brand} ${item.feedType}?`)) {
+                            if (confirm(`Delete feed product ${item.brand} - ${item.feedType}?`)) {
                               deleteFeedItem(item.id);
                             }
                           }}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                          title="Delete Feed Item"
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                          title="Delete Feed Product"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -361,6 +382,7 @@ export const FeedView: React.FC = () => {
                   <th className="p-2.5 text-right">Grams / Bird</th>
                   <th className="p-2.5 text-right font-bold text-slate-800">Feed Cost</th>
                   <th className="p-2.5">Notes</th>
+                  <th className="p-2.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
@@ -374,7 +396,7 @@ export const FeedView: React.FC = () => {
                     <tr key={log.id} className="hover:bg-slate-50/70">
                       <td className="p-2.5 font-semibold text-slate-700">{log.date}</td>
                       <td className="p-2.5 text-slate-800">{flock?.batchId || 'All Flocks'}</td>
-                      <td className="p-2.5 text-slate-800">{feed?.brand} - {feed?.feedType}</td>
+                      <td className="p-2.5 text-slate-800">{feed ? `${feed.brand} - ${feed.feedType}` : 'Feed Item'}</td>
                       <td className="p-2.5 text-right font-mono font-bold text-amber-900">{log.bagsUsed}</td>
                       <td className="p-2.5 text-right font-mono text-slate-900">{log.kgUsed} kg</td>
                       <td className="p-2.5 text-right font-mono text-indigo-700">{gramsPerBird.toFixed(1)} g</td>
@@ -382,6 +404,24 @@ export const FeedView: React.FC = () => {
                         {formatCurrency(log.cost)}
                       </td>
                       <td className="p-2.5 text-slate-400">{log.notes || '—'}</td>
+                      <td className="p-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleEditConsLog(log)}
+                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                            title="Edit Consumption Log"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteConsLog(log.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                            title="Delete Consumption Log"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -408,72 +448,85 @@ export const FeedView: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateFeedType} className="mt-4 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Brand Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. B-Meg, Uno, San Miguel, Vitarich"
+                  value={brand}
+                  onChange={e => setBrand(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Feed Formulation / Stage *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Chick Booster, Starter Crumble, Layer 1 Mash, Layer 2"
+                  value={feedType}
+                  onChange={e => setFeedType(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Feed Type *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Bag Weight (KG)</label>
                   <input
-                    type="text"
+                    type="number"
+                    min="1"
                     required
-                    placeholder="e.g. Layer 1 Mash"
-                    value={feedType}
-                    onChange={e => setFeedType(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+                    value={bagWeightKg}
+                    onChange={e => setBagWeightKg(parseInt(e.target.value) || 50)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Brand *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Price per Bag (₱)</label>
                   <input
-                    type="text"
+                    type="number"
+                    min="0"
                     required
-                    placeholder="e.g. B-Meg / Purina / Uno"
-                    value={brand}
-                    onChange={e => setBrand(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
+                    value={costPerBag}
+                    onChange={e => setCostPerBag(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Weight / Bag (kg)</label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={bagWeightKg}
-                    onChange={e => setBagWeightKg(parseFloat(e.target.value) || 50)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Cost / Bag (₱)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Initial Stock (Bags)</label>
                   <input
                     type="number"
                     min="0"
-                    value={costPerBag}
-                    onChange={e => setCostPerBag(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
+                    value={initialBags}
+                    onChange={e => setInitialBags(parseInt(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Min Stock Alert</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Min Alert Stock (Bags)</label>
                   <input
                     type="number"
                     min="1"
                     value={minimumBagsAlert}
-                    onChange={e => setMinimumBagsAlert(parseInt(e.target.value) || 5)}
+                    onChange={e => setMinimumBagsAlert(parseInt(e.target.value) || 10)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Supplier / Feed Mill</label>
+                <label className="block font-semibold text-slate-700 mb-1">Supplier / Store</label>
                 <input
                   type="text"
-                  placeholder="Feed distributor name"
+                  placeholder="e.g. B-Meg Bicol Supply Depot"
                   value={supplier}
                   onChange={e => setSupplier(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg"
@@ -620,16 +673,19 @@ export const FeedView: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: LOG FEED CONSUMPTION */}
+      {/* MODAL: LOG / EDIT FEED CONSUMPTION */}
       {showConsumptionModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="font-heading font-bold text-base text-slate-900">
-                Log Daily Feed Consumption
+                {editingConsLog ? 'Edit Daily Feed Consumption Log' : 'Log Daily Feed Consumption'}
               </h3>
               <button
-                onClick={() => setShowConsumptionModal(false)}
+                onClick={() => {
+                  setShowConsumptionModal(false);
+                  setEditingConsLog(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 text-sm font-bold"
               >
                 ✕
@@ -709,19 +765,33 @@ export const FeedView: React.FC = () => {
                 />
               </div>
 
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Notes / Remarks</label>
+                <input
+                  type="text"
+                  value={consNotes}
+                  onChange={e => setConsNotes(e.target.value)}
+                  placeholder="e.g., Morning feeding, house 1"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                />
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setShowConsumptionModal(false)}
+                  onClick={() => {
+                    setShowConsumptionModal(false);
+                    setEditingConsLog(null);
+                  }}
                   className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs cursor-pointer"
                 >
-                  Deduct from Stock
+                  {editingConsLog ? 'Save Changes' : 'Deduct from Stock'}
                 </button>
               </div>
             </form>
