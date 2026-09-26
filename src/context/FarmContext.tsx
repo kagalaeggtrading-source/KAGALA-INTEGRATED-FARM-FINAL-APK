@@ -2702,30 +2702,42 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     syncDeleteDoc('daily_tasks', id);
   };
 
-  // Requirement 2: Auto-Sorting Logistics (Most Recent on Top)
+  // Auto-Sorting Logistics (Most Recent Entries Always on Top)
   const sortedSales = useMemo(() => {
-    return [...sales].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+    return [...sales].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
   }, [sales]);
 
   const sortedExpenses = useMemo(() => {
-    return [...expenses].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+    return [...expenses].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
   }, [expenses]);
 
   const sortedEggProductionLogs = useMemo(() => {
-    return [...eggProductionLogs].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+    return [...eggProductionLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
   }, [eggProductionLogs]);
 
   const sortedPayments = useMemo(() => {
-    return [...payments].sort((a, b) => (b.paymentDate || b.createdAt).localeCompare(a.paymentDate || a.createdAt));
+    return [...payments].sort((a, b) => (b.paymentDate || b.createdAt || '').localeCompare(a.paymentDate || a.createdAt || ''));
   }, [payments]);
 
   const sortedFeedConsumptionLogs = useMemo(() => {
-    return [...feedConsumptionLogs].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+    return [...feedConsumptionLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
   }, [feedConsumptionLogs]);
 
   const sortedSupplyUsageLogs = useMemo(() => {
-    return [...supplyUsageLogs].sort((a, b) => (b.date || b.createdAt).localeCompare(a.date || a.createdAt));
+    return [...supplyUsageLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
   }, [supplyUsageLogs]);
+
+  const sortedActivityLogs = useMemo(() => {
+    return [...activityLogs].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  }, [activityLogs]);
+
+  const sortedPriceChangeLogs = useMemo(() => {
+    return [...priceChangeLogs].sort((a, b) => (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || ''));
+  }, [priceChangeLogs]);
+
+  const sortedBankDeposits = useMemo(() => {
+    return [...bankDeposits].sort((a, b) => (b.depositDate || b.createdAt || '').localeCompare(a.depositDate || a.createdAt || ''));
+  }, [bankDeposits]);
 
   return (
     <FarmContext.Provider
@@ -2807,7 +2819,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         updateExpense,
         deleteExpense,
         bankAccounts,
-        bankDeposits,
+        bankDeposits: sortedBankDeposits,
         internalTransfers,
         addBankAccount,
         updateBankAccount,
@@ -2846,9 +2858,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         roleCredentials,
         changeUserPassword,
         adminResetUserPassword,
-        activityLogs,
+        activityLogs: sortedActivityLogs,
         logActivity,
-        priceChangeLogs,
+        priceChangeLogs: sortedPriceChangeLogs,
         eggGradePrices,
         updateEggGradePrice,
         currentRole,
