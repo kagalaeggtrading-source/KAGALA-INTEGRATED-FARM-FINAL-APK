@@ -65,7 +65,7 @@ import {
 import { auth, googleProvider, testConnection } from '../firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 
-interface EggStockSummary {
+export interface EggStockSummary {
   grade: EggGradeKey;
   produced: number;
   adjustmentsIn: number;
@@ -73,12 +73,12 @@ interface EggStockSummary {
   sold: number;
   reserved: number;
   available: number;
-  totalPhysical: number; // produced + adjustmentsIn - adjustmentsOut - sold
+  totalPhysical: number;
   availableTrays: number;
   availableLoose: number;
 }
 
-interface FarmContextType {
+export interface FarmContextType {
   // Profile
   profile: FarmProfile;
   updateProfile: (updates: Partial<FarmProfile>) => void;
@@ -141,8 +141,16 @@ interface FarmContextType {
   // Feed Analytics
   totalFeedKgConsumedAllTime: number;
   totalFeedBagsConsumedAllTime: number;
-  feedConsumptionRatio: number; // kg feed per egg
-  fcrPerTray: number; // kg feed per tray
+  feedConsumptionRatio: number;
+  fcrPerTray: number;
+  flockPerformanceMetrics: Array<{
+    flockId: string;
+    batchId: string;
+    totalKgConsumed: number;
+    totalEggsProduced: number;
+    fcr: number;
+    fcrPerTray: number;
+  }>;
 
   // Daily Tasks Planner Board
   dailyTasks: DailyTask[];
@@ -249,6 +257,7 @@ interface FarmContextType {
   roleCredentials: RoleCredentials;
   changeUserPassword: (role: UserRole, currentPassword: string, newPassword: string) => { success: boolean; message: string };
   adminResetUserPassword: (targetRole: UserRole, newPassword: string) => { success: boolean; message: string };
+
   // Activity Audit Logs
   activityLogs: ActivityLog[];
   logActivity: (actionType: ActionType, module: string, details: string, actorRole?: UserRole) => void;
@@ -280,6 +289,7 @@ interface FarmContextType {
 const FarmContext = createContext<FarmContextType | undefined>(undefined);
 
 function loadStorage<T>(key: string, defaultValue: T): T {
+  if (typeof window === 'undefined') return defaultValue;
   try {
     const data = localStorage.getItem(STORAGE_KEY_PREFIX + key);
     if (!data) return defaultValue;
@@ -291,6 +301,7 @@ function loadStorage<T>(key: string, defaultValue: T): T {
 }
 
 function saveStorage<T>(key: string, value: T): void {
+  if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY_PREFIX + key, JSON.stringify(value));
   } catch (err) {
@@ -299,18 +310,19 @@ function saveStorage<T>(key: string, value: T): void {
 }
 
 export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Farm Profile (Default Kagala Farm metadata, logo starts null)
+  // Farm Profile
   const [profile, setProfile] = useState<FarmProfile>(() =>
     loadStorage('profile', DEFAULT_FARM_PROFILE)
   );
 
-  // Core entities - START AT ZERO DATA
+  // Core Entity States
   const [farms, setFarms] = useState<FarmLocation[]>(() => loadStorage('farms', []));
   const [houses, setHouses] = useState<FarmHouse[]>(() => loadStorage('houses', []));
   const [flocks, setFlocks] = useState<Flock[]>(() => loadStorage('flocks', []));
   const [flockAdjustments, setFlockAdjustments] = useState<FlockAdjustment[]>(() =>
     loadStorage('flock_adjustments', [])
   );
+
   const [eggProductionLogs, setEggProductionLogs] = useState<EggProductionLog[]>(() =>
     loadStorage('egg_production_logs', [])
   );
@@ -318,7 +330,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadStorage('egg_adjustments', [])
   );
 
-  // Feed & Supplies
   const [feedItems, setFeedItems] = useState<FeedItem[]>(() => loadStorage('feed_items', []));
   const [feedConsumptionLogs, setFeedConsumptionLogs] = useState<FeedConsumptionLog[]>(() =>
     loadStorage('feed_consumption_logs', [])
@@ -326,57 +337,28 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [feedPurchaseLogs, setFeedPurchaseLogs] = useState<FeedPurchaseLog[]>(() =>
     loadStorage('feed_purchase_logs', [])
   );
-  const [supplyItems, setSupplyItems] = useState<SupplyItem[]>(() =>
-    loadStorage('supply_items', [])
-  );
+
+  const [supplyItems, setSupplyItems] = useState<SupplyItem[]>(() => loadStorage('supply_items', []));
   const [supplyUsageLogs, setSupplyUsageLogs] = useState<SupplyUsageLog[]>(() =>
     loadStorage('supply_usage_logs', [])
   );
 
-  // Commerce & Finance
   const [customers, setCustomers] = useState<Customer[]>(() => loadStorage('customers', []));
   const [orders, setOrders] = useState<FarmOrder[]>(() => loadStorage('orders', []));
   const [sales, setSales] = useState<FarmSale[]>(() => loadStorage('sales', []));
-  const [payments, setPayments] = useState<CustomerPayment[]>(() =>
-    loadStorage('payments', [])
-  );
+  const [payments, setPayments] = useState<CustomerPayment[]>(() => loadStorage('payments', []));
   const [expenses, setExpenses] = useState<FarmExpense[]>(() => loadStorage('expenses', []));
-  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() =>
-    loadStorage('bank_accounts', [])
-  );
-  const [bankDeposits, setBankDeposits] = useState<BankDeposit[]>(() =>
-    loadStorage('bank_deposits', [])
-  );
+
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>(() => loadStorage('bank_accounts', []));
+  const [bankDeposits, setBankDeposits] = useState<BankDeposit[]>(() => loadStorage('bank_deposits', []));
   const [internalTransfers, setInternalTransfers] = useState<InternalTransfer[]>(() =>
     loadStorage('internal_transfers', [])
   );
 
-  // Dynamic Cash on Hand Calculation:
-  // Formula: Cash on Hand = (Total Cash Payments Received) - (Total Farm Expenses Paid Out + Total Cash Deposited to Bank)
-  const cashOnHand = useMemo(() => {
-    const totalCashPaymentsReceived = payments
-      .filter(p => p.accountReceivedInto === 'cash_on_hand' || p.paymentMethod === 'Cash')
-      .reduce((sum, p) => sum + p.amount, 0);
-
-    const totalCashExpensesPaidOut = expenses
-      .filter(e => e.paymentAccount === 'cash_on_hand' || !e.paymentAccount)
-      .reduce((sum, e) => sum + e.amount, 0);
-
-    const totalCashDepositedToBank = bankDeposits
-      .filter(d => d.sourceAccount === 'Cash on Hand' || !d.sourceAccount)
-      .reduce((sum, d) => sum + d.amount, 0);
-
-    return totalCashPaymentsReceived - (totalCashExpensesPaidOut + totalCashDepositedToBank);
-  }, [payments, expenses, bankDeposits]);
-
-  const [trashItems, setTrashItems] = useState<TrashItem[]>(() =>
-    loadStorage('trash_items', [])
-  );
-
+  const [trashItems, setTrashItems] = useState<TrashItem[]>(() => loadStorage('trash_items', []));
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() =>
     loadStorage<ActivityLog[]>('activity_logs_v2', [])
   );
-
   const [priceChangeLogs, setPriceChangeLogs] = useState<PriceChangeLog[]>(() =>
     loadStorage<PriceChangeLog[]>('price_change_logs_v2', [])
   );
@@ -420,15 +402,15 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const [auditReport, setAuditReport] = useState<AuditReport | null>(null);
 
-  // Cloud & Firebase Real-Time Sync State
+  // Cloud Sync & Auth States
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('syncing');
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // Universal Session & Role-Based Access Control (RBAC) State
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
-    return loadStorage<boolean>('is_authenticated_v2', false);
-  });
+  // Session & RBAC States
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() =>
+    loadStorage<boolean>('is_authenticated_v2', false)
+  );
 
   const [adminOverrideModalOpen, setAdminOverrideModalOpen] = useState<boolean>(false);
   const [pendingTargetRole, setPendingTargetRole] = useState<UserRole | 'LOGOUT' | null>('LOGOUT');
@@ -447,9 +429,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     loadStorage<UserRole>('active_role', DEFAULT_USER_ROLE)
   );
 
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
-    return loadStorage<boolean>('admin_auth_status', false);
-  });
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() =>
+    loadStorage<boolean>('admin_auth_status', false)
+  );
 
   const [adminLoginModalOpen, setAdminLoginModalOpen] = useState<boolean>(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>(() =>
@@ -486,40 +468,41 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ])
   );
 
-  // Universal Activity Audit Logger
-  const logActivity = (
-    actionType: ActionType,
-    module: string,
-    details: string,
-    actorRole?: UserRole
-  ) => {
-    const activeRole = actorRole || currentRole;
-    const roleTitle = activeRole === 'admin' ? 'Superuser Admin' : activeRole === 'manager' ? 'Farm Manager' : 'Farm Staff';
-    const now = new Date();
-    const formattedTimestamp = now.toLocaleDateString('en-PH', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    }) + ' ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const logActivity = (
+      actionType: ActionType,
+      module: string,
+      details: string,
+      actorRole?: UserRole
+    ) => {
+      const activeRole = actorRole || currentRole;
+      const roleTitle = activeRole === 'admin' ? 'Superuser Admin' : activeRole === 'manager' ? 'Farm Manager' : 'Farm Staff';
+      const now = new Date();
+      const formattedTimestamp = now.toLocaleDateString('en-PH', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }) + ' ' + now.toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-    const newLog: ActivityLog = {
-      id: 'LOG-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).substring(2, 6),
-      timestamp: formattedTimestamp,
-      userRole: activeRole,
-      userName: roleTitle,
-      actionType,
-      module,
-      details,
+      const newLog: ActivityLog = {
+        id: 'LOG-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).substring(2, 6),
+        timestamp: formattedTimestamp,
+        userRole: activeRole,
+        userName: roleTitle,
+        actionType,
+        module,
+        details,
+      };
+
+      // Functional update para maging instant at reactive ang refresh sa UI dashboard mo
+      setActivityLogs(prev => {
+        const updated = [newLog, ...prev];
+        setTimeout(() => saveStorage('activity_logs_v2', updated), 0);
+        return updated;
+      });
+
+      syncSaveDoc('activity_logs', newLog.id, newLog);
     };
 
-    setActivityLogs(prev => {
-      const updated = [newLog, ...prev];
-      saveStorage('activity_logs_v2', updated);
-      return updated;
-    });
-
-    syncSaveDoc('activity_logs', newLog.id, newLog);
-  };
 
   // Listen for auth state
   useEffect(() => {
@@ -559,82 +542,60 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       subscribeCollection<FarmHouse>('houses', items => {
         if (items.length > 0) setHouses(items);
         setLastSyncedAt(new Date());
+        setSyncStatus('connected');
       }),
       subscribeCollection<Flock>('flocks', items => {
         if (items.length > 0) setFlocks(items);
         setLastSyncedAt(new Date());
+        setSyncStatus('connected');
       }),
       subscribeCollection<FlockAdjustment>('flock_adjustments', items => {
         if (items.length > 0) setFlockAdjustments(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<EggProductionLog>('egg_production_logs', items => {
         if (items.length > 0) setEggProductionLogs(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<EggInventoryAdjustment>('egg_adjustments', items => {
         if (items.length > 0) setEggAdjustments(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<FeedItem>('feed_items', items => {
         if (items.length > 0) setFeedItems(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<FeedConsumptionLog>('feed_consumption_logs', items => {
         if (items.length > 0) setFeedConsumptionLogs(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<FeedPurchaseLog>('feed_purchase_logs', items => {
         if (items.length > 0) setFeedPurchaseLogs(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<SupplyItem>('supply_items', items => {
         if (items.length > 0) setSupplyItems(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<SupplyUsageLog>('supply_usage_logs', items => {
         if (items.length > 0) setSupplyUsageLogs(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<Customer>('customers', items => {
         if (items.length > 0) setCustomers(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<FarmOrder>('orders', items => {
         if (items.length > 0) setOrders(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<FarmSale>('sales', items => {
         if (items.length > 0) setSales(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<CustomerPayment>('payments', items => {
         if (items.length > 0) setPayments(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<FarmExpense>('expenses', items => {
         if (items.length > 0) setExpenses(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<BankAccount>('bank_accounts', items => {
         if (items.length > 0) setBankAccounts(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<BankDeposit>('bank_deposits', items => {
         if (items.length > 0) setBankDeposits(items);
-        setLastSyncedAt(new Date());
-      }),
-      subscribeCollection<InternalTransfer>('internal_transfers', items => {
-        if (items.length > 0) setInternalTransfers(items);
-        setLastSyncedAt(new Date());
       }),
       subscribeCollection<TrashItem>('trash_items', items => {
         if (items.length > 0) setTrashItems(items);
-        setLastSyncedAt(new Date());
-      }),
-      subscribeCollection<TeamMember>('team_members', items => {
-        if (items.length > 0) setTeamMembers(items);
-        setLastSyncedAt(new Date());
       }),
     ];
 
@@ -643,515 +604,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       unsubs.forEach(unsub => unsub());
     };
   }, []);
-
-  const signInWithGoogle = async () => {
-    try {
-      setSyncStatus('syncing');
-      await signInWithPopup(auth, googleProvider);
-      setSyncStatus('connected');
-    } catch (err) {
-      console.error('Sign in with Google error:', err);
-      setSyncStatus('error');
-    }
-  };
-
-  const signOutUser = async () => {
-    try {
-      await signOut(auth);
-      setSyncStatus('connected');
-    } catch (err) {
-      console.error('Sign out error:', err);
-    }
-  };
-
-  const syncAllLocalDataToCloud = async () => {
-    setSyncStatus('syncing');
-    try {
-      await syncSaveDoc('farm_profile', 'main', profile);
-      await syncSaveDoc('farm_finances', 'cash', { amount: cashOnHand, updatedAt: new Date().toISOString() });
-      await batchUploadCollection('farms', farms);
-      await batchUploadCollection('houses', houses);
-      await batchUploadCollection('flocks', flocks);
-      await batchUploadCollection('flock_adjustments', flockAdjustments);
-      await batchUploadCollection('egg_production_logs', eggProductionLogs);
-      await batchUploadCollection('egg_adjustments', eggAdjustments);
-      await batchUploadCollection('feed_items', feedItems);
-      await batchUploadCollection('feed_consumption_logs', feedConsumptionLogs);
-      await batchUploadCollection('feed_purchase_logs', feedPurchaseLogs);
-      await batchUploadCollection('supply_items', supplyItems);
-      await batchUploadCollection('supply_usage_logs', supplyUsageLogs);
-      await batchUploadCollection('customers', customers);
-      await batchUploadCollection('orders', orders);
-      await batchUploadCollection('sales', sales);
-      await batchUploadCollection('payments', payments);
-      await batchUploadCollection('expenses', expenses);
-      await batchUploadCollection('bank_accounts', bankAccounts);
-      await batchUploadCollection('bank_deposits', bankDeposits);
-      await batchUploadCollection('internal_transfers', internalTransfers);
-      await batchUploadCollection('trash_items', trashItems);
-      setLastSyncedAt(new Date());
-      setSyncStatus('connected');
-    } catch (err) {
-      console.error('Full cloud sync error:', err);
-      setSyncStatus('error');
-    }
-  };
-
-  // Persistence hooks
-  useEffect(() => { saveStorage('profile', profile); }, [profile]);
-  useEffect(() => { saveStorage('farms', farms); }, [farms]);
-  useEffect(() => { saveStorage('houses', houses); }, [houses]);
-  useEffect(() => { saveStorage('flocks', flocks); }, [flocks]);
-  useEffect(() => { saveStorage('flock_adjustments', flockAdjustments); }, [flockAdjustments]);
-  useEffect(() => { saveStorage('egg_production_logs', eggProductionLogs); }, [eggProductionLogs]);
-  useEffect(() => { saveStorage('egg_adjustments', eggAdjustments); }, [eggAdjustments]);
-  useEffect(() => { saveStorage('feed_items', feedItems); }, [feedItems]);
-  useEffect(() => { saveStorage('feed_consumption_logs', feedConsumptionLogs); }, [feedConsumptionLogs]);
-  useEffect(() => { saveStorage('feed_purchase_logs', feedPurchaseLogs); }, [feedPurchaseLogs]);
-  useEffect(() => { saveStorage('supply_items', supplyItems); }, [supplyItems]);
-  useEffect(() => { saveStorage('supply_usage_logs', supplyUsageLogs); }, [supplyUsageLogs]);
-  useEffect(() => { saveStorage('customers', customers); }, [customers]);
-  useEffect(() => { saveStorage('orders', orders); }, [orders]);
-  useEffect(() => { saveStorage('sales', sales); }, [sales]);
-  useEffect(() => { saveStorage('payments', payments); }, [payments]);
-  useEffect(() => { saveStorage('expenses', expenses); }, [expenses]);
-  useEffect(() => { saveStorage('bank_accounts', bankAccounts); }, [bankAccounts]);
-  useEffect(() => { saveStorage('bank_deposits', bankDeposits); }, [bankDeposits]);
-  useEffect(() => { saveStorage('internal_transfers', internalTransfers); }, [internalTransfers]);
-  useEffect(() => { saveStorage('cash_on_hand', cashOnHand); }, [cashOnHand]);
-  useEffect(() => { saveStorage('trash_items', trashItems); }, [trashItems]);
-
-  // Profile operations
-  const updateProfile = (updates: Partial<FarmProfile>) => {
-    setProfile(prev => {
-      const next = { ...prev, ...updates };
-      syncSaveDoc('farm_profile', 'main', next);
-      return next;
-    });
-  };
-
-  const uploadLogo = (base64Data: string) => {
-    setProfile(prev => {
-      const next = { ...prev, logoUrl: base64Data };
-      syncSaveDoc('farm_profile', 'main', next);
-      return next;
-    });
-  };
-
-  const removeLogo = () => {
-    setProfile(prev => {
-      const next = { ...prev, logoUrl: null };
-      syncSaveDoc('farm_profile', 'main', next);
-      return next;
-    });
-  };
-
-  // Trash & Recycle Bin Operations
-  const moveToTrash = (
-    entityType: TrashEntityType,
-    originalId: string,
-    title: string,
-    subtitle?: string,
-    recordDate?: string,
-    data?: any
-  ) => {
-    const newTrashItem: TrashItem = {
-      id: 'TRASH-' + Date.now().toString() + '-' + Math.random().toString(36).substring(2, 7),
-      originalId,
-      entityType,
-      title,
-      subtitle,
-      recordDate: recordDate || new Date().toISOString().split('T')[0],
-      deletedAt: new Date().toISOString(),
-      data: data || {},
-    };
-    setTrashItems(prev => [newTrashItem, ...prev]);
-    syncSaveDoc('trash_items', newTrashItem.id, newTrashItem);
-  };
-
-  const restoreFromTrash = (trashId: string): boolean => {
-    const item = trashItems.find(t => t.id === trashId);
-    if (!item) return false;
-    const data = item.data;
-    if (!data) return false;
-
-    switch (item.entityType) {
-      case 'egg_production':
-        setEggProductionLogs(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'flock':
-        setFlocks(prev => [...prev.filter(x => x.id !== data.id), data]);
-        break;
-      case 'flock_adjustment':
-        setFlockAdjustments(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'feed_item':
-        setFeedItems(prev => [...prev.filter(x => x.id !== data.id), data]);
-        break;
-      case 'feed_consumption':
-        setFeedConsumptionLogs(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'feed_purchase':
-        setFeedPurchaseLogs(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'supply_item':
-        setSupplyItems(prev => [...prev.filter(x => x.id !== data.id), data]);
-        break;
-      case 'supply_usage':
-        setSupplyUsageLogs(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'customer':
-        setCustomers(prev => [...prev.filter(x => x.id !== data.id), data]);
-        break;
-      case 'order':
-        setOrders(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'sale':
-        setSales(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'payment':
-        setPayments(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'expense':
-        setExpenses(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'bank_account':
-        setBankAccounts(prev => [...prev.filter(x => x.id !== data.id), data]);
-        break;
-      case 'bank_deposit':
-        setBankDeposits(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-        break;
-      case 'farm':
-        setFarms(prev => [...prev.filter(x => x.id !== data.id), data]);
-        break;
-      case 'house':
-        setHouses(prev => [...prev.filter(x => x.id !== data.id), data]);
-        break;
-    }
-    setTrashItems(prev => prev.filter(t => t.id !== trashId));
-    syncDeleteDoc('trash_items', trashId);
-    return true;
-  };
-
-  const permanentlyDeleteFromTrash = (trashId: string) => {
-    setTrashItems(prev => prev.filter(t => t.id !== trashId));
-    syncDeleteDoc('trash_items', trashId);
-  };
-
-  const emptyTrash = () => {
-    trashItems.forEach(t => syncDeleteDoc('trash_items', t.id));
-    setTrashItems([]);
-  };
-
-  const restoreAllFromTrash = () => {
-    trashItems.forEach(item => {
-      const data = item.data;
-      if (!data) return;
-      syncDeleteDoc('trash_items', item.id);
-      switch (item.entityType) {
-        case 'egg_production':
-          setEggProductionLogs(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('egg_production_logs', data.id, data);
-          break;
-        case 'flock':
-          setFlocks(prev => [...prev.filter(x => x.id !== data.id), data]);
-          syncSaveDoc('flocks', data.id, data);
-          break;
-        case 'flock_adjustment':
-          setFlockAdjustments(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('flock_adjustments', data.id, data);
-          break;
-        case 'feed_item':
-          setFeedItems(prev => [...prev.filter(x => x.id !== data.id), data]);
-          syncSaveDoc('feed_items', data.id, data);
-          break;
-        case 'feed_consumption':
-          setFeedConsumptionLogs(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('feed_consumption_logs', data.id, data);
-          break;
-        case 'feed_purchase':
-          setFeedPurchaseLogs(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('feed_purchase_logs', data.id, data);
-          break;
-        case 'supply_item':
-          setSupplyItems(prev => [...prev.filter(x => x.id !== data.id), data]);
-          syncSaveDoc('supply_items', data.id, data);
-          break;
-        case 'supply_usage':
-          setSupplyUsageLogs(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('supply_usage_logs', data.id, data);
-          break;
-        case 'customer':
-          setCustomers(prev => [...prev.filter(x => x.id !== data.id), data]);
-          syncSaveDoc('customers', data.id, data);
-          break;
-        case 'order':
-          setOrders(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('orders', data.id, data);
-          break;
-        case 'sale':
-          setSales(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('sales', data.id, data);
-          break;
-        case 'payment':
-          setPayments(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('payments', data.id, data);
-          break;
-        case 'expense':
-          setExpenses(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('expenses', data.id, data);
-          break;
-        case 'bank_account':
-          setBankAccounts(prev => [...prev.filter(x => x.id !== data.id), data]);
-          syncSaveDoc('bank_accounts', data.id, data);
-          break;
-        case 'bank_deposit':
-          setBankDeposits(prev => [data, ...prev.filter(x => x.id !== data.id)]);
-          syncSaveDoc('bank_deposits', data.id, data);
-          break;
-        case 'farm':
-          setFarms(prev => [...prev.filter(x => x.id !== data.id), data]);
-          syncSaveDoc('farms', data.id, data);
-          break;
-        case 'house':
-          setHouses(prev => [...prev.filter(x => x.id !== data.id), data]);
-          syncSaveDoc('houses', data.id, data);
-          break;
-      }
-    });
-    setTrashItems([]);
-  };
-
-  // Multi-Farm & House operations
-  const addFarm = (name: string, code: string, notes?: string): FarmLocation => {
-    const newFarm: FarmLocation = {
-      id: 'FARM-' + Date.now().toString().slice(-6),
-      name,
-      code,
-      notes,
-      createdAt: new Date().toISOString(),
-    };
-    setFarms(prev => [...prev, newFarm]);
-    syncSaveDoc('farms', newFarm.id, newFarm);
-    return newFarm;
-  };
-
-  const deleteFarm = (id: string) => {
-    const target = farms.find(f => f.id === id);
-    if (target) {
-      moveToTrash('farm', id, `Farm: ${target.name} (${target.code})`, target.notes || '', undefined, target);
-    }
-    setFarms(prev => prev.filter(f => f.id !== id));
-    syncDeleteDoc('farms', id);
-  };
-
-  const addHouse = (
-    farmId: string,
-    name: string,
-    code: string,
-    capacity: number,
-    houseType: string,
-    notes?: string
-  ): FarmHouse => {
-    const newHouse: FarmHouse = {
-      id: 'HSE-' + Date.now().toString().slice(-6),
-      farmId,
-      name,
-      code,
-      capacity,
-      houseType,
-      notes,
-      createdAt: new Date().toISOString(),
-    };
-    setHouses(prev => [...prev, newHouse]);
-    syncSaveDoc('houses', newHouse.id, newHouse);
-    return newHouse;
-  };
-
-  const deleteHouse = (id: string) => {
-    const target = houses.find(h => h.id === id);
-    if (target) {
-      moveToTrash('house', id, `House: ${target.name} (${target.code})`, `Capacity: ${target.capacity} birds`, undefined, target);
-    }
-    setHouses(prev => prev.filter(h => h.id !== id));
-    syncDeleteDoc('houses', id);
-  };
-
-  // Flock operations with strict population logic
-  const addFlock = (flockData: Omit<Flock, 'id' | 'currentPopulation' | 'createdAt'>): Flock => {
-    const newFlock: Flock = {
-      ...flockData,
-      id: 'FLOCK-' + Date.now().toString().slice(-6),
-      currentPopulation: flockData.startingPopulation,
-      createdAt: new Date().toISOString(),
-    };
-    setFlocks(prev => [...prev, newFlock]);
-    syncSaveDoc('flocks', newFlock.id, newFlock);
-    return newFlock;
-  };
-
-  const updateFlock = (id: string, updates: Partial<Flock>) => {
-    setFlocks(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
-    syncUpdateDoc('flocks', id, updates);
-  };
-
-  const deleteFlock = (id: string) => {
-    const target = flocks.find(f => f.id === id);
-    if (target) {
-      moveToTrash(
-        'flock',
-        id,
-        `Flock: ${target.batchId}`,
-        `${target.breedStrain} (${target.currentPopulation} birds)`,
-        target.startDate,
-        target
-      );
-    }
-    setFlocks(prev => prev.filter(f => f.id !== id));
-    syncDeleteDoc('flocks', id);
-  };
-
-  const addFlockAdjustment = (
-    flockId: string,
-    date: string,
-    type: FlockAdjustment['type'],
-    quantity: number,
-    reason: string,
-    notes?: string
-  ) => {
-    const targetFlock = flocks.find(f => f.id === flockId);
-    if (!targetFlock) {
-      throw new Error(`Flock ${flockId} not found`);
-    }
-
-    if (quantity <= 0) {
-      throw new Error('Adjustment quantity must be greater than zero');
-    }
-
-    let nextPop = targetFlock.currentPopulation;
-    if (type === 'mortality' || type === 'cull' || type === 'transfer_out') {
-      if (quantity > nextPop) {
-        throw new Error(
-          `Cannot deduct ${quantity} birds. Current population is only ${nextPop}. Negative populations are strictly forbidden.`
-        );
-      }
-      nextPop -= quantity;
-    } else if (type === 'transfer_in') {
-      nextPop += quantity;
-    }
-
-    const adjustment: FlockAdjustment = {
-      id: 'ADJ-' + Date.now().toString().slice(-6),
-      flockId,
-      date,
-      type,
-      quantity,
-      reason,
-      notes,
-      recordedAt: new Date().toISOString(),
-    };
-
-    setFlockAdjustments(prev => [...prev, adjustment]);
-    setFlocks(prev =>
-      prev.map(f => (f.id === flockId ? { ...f, currentPopulation: nextPop } : f))
-    );
-    syncSaveDoc('flock_adjustments', adjustment.id, adjustment);
-    syncUpdateDoc('flocks', flockId, { currentPopulation: nextPop });
-  };
-
-  const deleteFlockAdjustment = (id: string) => {
-    const target = flockAdjustments.find(a => a.id === id);
-    if (target) {
-      moveToTrash(
-        'flock_adjustment',
-        id,
-        `Flock Adjustment: ${target.type.toUpperCase()} (${target.quantity} birds)`,
-        target.reason || '',
-        target.date,
-        target
-      );
-    }
-    setFlockAdjustments(prev => prev.filter(a => a.id !== id));
-    syncDeleteDoc('flock_adjustments', id);
-  };
-
-  // Egg Production operations
-  const addEggProductionLog = (log: Omit<EggProductionLog, 'id' | 'createdAt'>): EggProductionLog => {
-    const newLog: EggProductionLog = {
-      ...log,
-      id: 'PROD-' + Date.now().toString().slice(-6),
-      createdAt: new Date().toISOString(),
-    };
-    setEggProductionLogs(prev => [...prev, newLog]);
-    syncSaveDoc('egg_production_logs', newLog.id, newLog);
-
-    logActivity(
-      'CREATED',
-      'Egg Production',
-      `Recorded daily egg harvest for date ${log.date}: ${log.totalCollection} total eggs collected (${log.usableEggs} good eggs, ${log.rejects || 0} rejects)`
-    );
-
-    return newLog;
-  };
-
-  const updateEggProductionLog = (id: string, updates: Partial<EggProductionLog>) => {
-    setEggProductionLogs(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
-    syncUpdateDoc('egg_production_logs', id, updates);
-
-    logActivity(
-      'EDITED',
-      'Egg Production',
-      `Updated egg collection record ${id} for date ${updates.date || 'harvest'}`
-    );
-  };
-
-  const deleteEggProductionLog = (id: string) => {
-    const target = eggProductionLogs.find(p => p.id === id);
-    if (target) {
-      moveToTrash(
-        'egg_production',
-        id,
-        `Egg Collection: ${target.date}`,
-        `${target.totalCollection} eggs collected (${target.usableEggs} good, ${target.rejects != null ? target.rejects : (target.brokenEggs || 0) + (target.dirtyEggs || 0)} rejects)`,
-        target.date,
-        target
-      );
-      logActivity(
-        'DELETED',
-        'Egg Production',
-        `Moved egg collection record ${id} (${target.date}: ${target.totalCollection} eggs) to trash`
-      );
-    }
-    setEggProductionLogs(prev => prev.filter(p => p.id !== id));
-    syncDeleteDoc('egg_production_logs', id);
-  };
-  };
-
-  const addEggAdjustment = (adj: Omit<EggInventoryAdjustment, 'id' | 'createdAt'>) => {
-    const newAdj: EggInventoryAdjustment = {
-      ...adj,
-      id: 'EADJ-' + Date.now().toString().slice(-6),
-      createdAt: new Date().toISOString(),
-    };
-    setEggAdjustments(prev => [...prev, newAdj]);
-    syncSaveDoc('egg_adjustments', newAdj.id, newAdj);
-  };
-
-  const deleteEggAdjustment = (id: string) => {
-    const target = eggAdjustments.find(a => a.id === id);
-    if (target) {
-      moveToTrash(
-        'egg_production',
-        id,
-        `Egg Adjustment: ${target.grade.toUpperCase()} (${target.quantityPieces} pcs)`,
-        target.reason || '',
-        target.date,
-        target
-      );
-    }
-    setEggAdjustments(prev => prev.filter(a => a.id !== id));
-    syncDeleteDoc('egg_adjustments', id);
-  };
 
   // Real-time Egg Inventory Calculation
   const eggStockSummary = useMemo(() => {
@@ -1172,18 +624,19 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       };
     });
 
-    // 1. Production
+    // 1. Sum Production Harvest
     eggProductionLogs.forEach(log => {
-      EGG_GRADES.forEach(g => {
-        const count = log.grades?.[g.key] || 0;
-        summary[g.key].produced += count;
-      });
+      if (log.grades) {
+        EGG_GRADES.forEach(g => {
+          summary[g.key].produced += log.grades[g.key] || 0;
+        });
+      }
     });
 
     // 2. Adjustments
     eggAdjustments.forEach(adj => {
       if (summary[adj.grade]) {
-        if (adj.type === 'adjustment_in') {
+        if (adj.type === 'in' || adj.type === 'found' || adj.type === 'gift_in') {
           summary[adj.grade].adjustmentsIn += adj.quantityPieces;
         } else {
           summary[adj.grade].adjustmentsOut += adj.quantityPieces;
@@ -1191,30 +644,27 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
     });
 
-    // 3. Sold
+    // 3. Sales
     sales.forEach(sale => {
       sale.items.forEach(item => {
         if (summary[item.grade]) {
-          const qty = item.priceType === 'tray' ? item.quantityTrays * 30 : item.quantityPieces;
-          summary[item.grade].sold += qty;
+          summary[item.grade].sold += item.quantityPieces;
         }
       });
     });
 
-    // 4. Reserved (from orders in pending/active status)
-    const activeOrderStatuses = ['CONFIRMED', 'RESERVED', 'PREPARING', 'READY', 'OUT FOR DELIVERY'];
-    orders.forEach(ord => {
-      if (activeOrderStatuses.includes(ord.status)) {
-        ord.items.forEach(item => {
+    // 4. Reserved
+    orders.forEach(order => {
+      if (order.status === 'NEW' || order.status === 'CONFIRMED' || order.status === 'RESERVED') {
+        order.items.forEach(item => {
           if (summary[item.grade]) {
-            const qty = item.priceType === 'tray' ? item.quantityTrays * 30 : item.quantityPieces;
-            summary[item.grade].reserved += qty;
+            summary[item.grade].reserved += item.quantityPieces;
           }
         });
       }
     });
 
-    // 5. Calculate physical and available
+    // Final calculations per grade
     EGG_GRADES.forEach(g => {
       const s = summary[g.key];
       s.totalPhysical = s.produced + s.adjustmentsIn - s.adjustmentsOut - s.sold;
@@ -1242,52 +692,312 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return Object.values(eggStockSummary).reduce((sum, s) => sum + s.reserved, 0);
   }, [eggStockSummary]);
 
-  // Egg Reconciliation & Inventory Tracking Computations
   const totalGoodEggsCollected = useMemo(() => {
-    return eggProductionLogs.reduce((sum, log) => sum + log.usableEggs, 0);
+    return eggProductionLogs.reduce((sum, l) => sum + l.usableEggs, 0);
   }, [eggProductionLogs]);
 
   const totalEggsSold = useMemo(() => {
     return sales.reduce((totalSum, sale) => {
-      const salePcs = (sale.items || []).reduce((itemSum, item) => {
+      const salePcs = (sale.items || []).reduce((iSum, item) => {
         const pcs = item.priceType === 'tray' ? item.quantityTrays * 30 : item.quantityPieces;
-        return itemSum + (pcs || 0);
+        return iSum + (pcs || 0);
       }, 0);
       return totalSum + salePcs;
     }, 0);
   }, [sales]);
 
-  const inventoryRemaining = useMemo(() => {
-    return totalGoodEggsCollected - totalEggsSold;
-  }, [totalGoodEggsCollected, totalEggsSold]);
+  const inventoryRemaining = totalGoodEggsCollected - totalEggsSold;
+  const hasSalesDiscrepancy = totalEggsSold > totalGoodEggsCollected;
 
-  const hasSalesDiscrepancy = useMemo(() => {
-    return totalEggsSold > totalGoodEggsCollected;
-  }, [totalGoodEggsCollected, totalEggsSold]);
+  const potentialRevenue = useMemo(() => {
+    return EGG_GRADES.reduce((sum, g) => {
+      const producedCount = eggStockSummary[g.key]?.produced || 0;
+      const unitPrice = eggGradePrices[g.key]?.piecePrice || (DEFAULT_EGG_GRADE_PRICES[g.key]?.piecePrice || 7);
+      return sum + producedCount * unitPrice;
+    }, 0);
+  }, [eggStockSummary, eggGradePrices]);
 
   const actualRealizedRevenue = useMemo(() => {
     return sales.reduce((sum, s) => sum + s.total, 0);
   }, [sales]);
 
-  const potentialRevenue = useMemo(() => {
-    const avgPricePerEgg = totalEggsSold > 0 ? (actualRealizedRevenue / totalEggsSold) : 7.00;
-    return totalGoodEggsCollected * avgPricePerEgg;
-  }, [totalGoodEggsCollected, totalEggsSold, actualRealizedRevenue]);
+  // Dynamic Cash on Hand Calculation
+  const cashOnHand = useMemo(() => {
+    const totalCashPaymentsReceived = payments
+      .filter(p => p.accountReceivedInto === 'cash_on_hand' || p.paymentMethod === 'Cash')
+      .reduce((sum, p) => sum + p.amount, 0);
 
-  // Feed Operations
-  const addFeedItem = (
-    itemData: Omit<FeedItem, 'id' | 'currentBags' | 'currentKg' | 'costPerKg' | 'createdAt'>,
-    initialBags: number = 0
-  ): FeedItem => {
-    const costPerKg = itemData.bagWeightKg > 0 ? itemData.costPerBag / itemData.bagWeightKg : 0;
+    const totalCashExpensesPaidOut = expenses
+      .filter(e => e.paymentAccount === 'cash_on_hand' || !e.paymentAccount)
+      .reduce((sum, e) => sum + e.amount, 0);
+
+    const totalCashDepositedToBank = bankDeposits
+      .filter(d => d.sourceAccount === 'Cash on Hand' || !d.sourceAccount)
+      .reduce((sum, d) => sum + d.amount, 0);
+
+    return totalCashPaymentsReceived - (totalCashExpensesPaidOut + totalCashDepositedToBank);
+  }, [payments, expenses, bankDeposits]);
+
+  // Feed Analytics
+  const totalFeedKgConsumedAllTime = useMemo(() => {
+    return feedConsumptionLogs.reduce((sum, log) => sum + (log.kgUsed || log.bagsUsed * 50), 0);
+  }, [feedConsumptionLogs]);
+
+  const totalFeedBagsConsumedAllTime = useMemo(() => {
+    return feedConsumptionLogs.reduce((sum, log) => sum + (log.bagsUsed || 0), 0);
+  }, [feedConsumptionLogs]);
+
+  const feedConsumptionRatio = useMemo(() => {
+    if (!totalGoodEggsCollected || totalGoodEggsCollected <= 0) return 0;
+    return Number((totalFeedKgConsumedAllTime / totalGoodEggsCollected).toFixed(3));
+  }, [totalFeedKgConsumedAllTime, totalGoodEggsCollected]);
+
+  const fcrPerTray = useMemo(() => {
+    const totalTrays = totalGoodEggsCollected / 30;
+    if (!totalTrays || totalTrays <= 0) return 0;
+    return Number((totalFeedKgConsumedAllTime / totalTrays).toFixed(2));
+  }, [totalFeedKgConsumedAllTime, totalGoodEggsCollected]);
+
+  // Flock-Specific Feed Conversion Ratio (FCR) Analytics
+  const flockPerformanceMetrics = useMemo(() => {
+    return flocks.map(flock => {
+      const totalKgConsumed = feedConsumptionLogs
+        .filter(log => log.flockId === flock.id || log.houseId === flock.houseId)
+        .reduce((sum, log) => sum + (log.kgUsed || log.bagsUsed * 50), 0);
+
+      const totalEggsProduced = eggProductionLogs
+        .filter(log => log.flockId === flock.id || log.houseId === flock.houseId)
+        .reduce((sum, log) => sum + log.usableEggs, 0);
+
+      const fcr = totalEggsProduced > 0 ? Number((totalKgConsumed / totalEggsProduced).toFixed(3)) : 0;
+      const fcrPerTray = totalEggsProduced > 0 ? Number((totalKgConsumed / (totalEggsProduced / 30)).toFixed(2)) : 0;
+
+      return {
+        flockId: flock.id,
+        batchId: flock.batchId,
+        totalKgConsumed,
+        totalEggsProduced,
+        fcr,
+        fcrPerTray,
+      };
+    });
+  }, [flocks, feedConsumptionLogs, eggProductionLogs]);
+
+  // Auto-Sorting Logistics (Most Recent Entries Always on Top)
+  const sortedSales = useMemo(() => {
+    return [...sales].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
+  }, [sales]);
+
+  const sortedExpenses = useMemo(() => {
+    return [...expenses].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
+  }, [expenses]);
+
+  const sortedEggProductionLogs = useMemo(() => {
+    return [...eggProductionLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
+  }, [eggProductionLogs]);
+
+  const sortedPayments = useMemo(() => {
+    return [...payments].sort((a, b) => (b.paymentDate || b.createdAt || '').localeCompare(a.paymentDate || a.createdAt || ''));
+  }, [payments]);
+
+  const sortedFeedConsumptionLogs = useMemo(() => {
+    return [...feedConsumptionLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
+  }, [feedConsumptionLogs]);
+
+  const sortedSupplyUsageLogs = useMemo(() => {
+    return [...supplyUsageLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
+  }, [supplyUsageLogs]);
+
+  const sortedActivityLogs = useMemo(() => {
+    return [...activityLogs].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+  }, [activityLogs]);
+
+  const sortedPriceChangeLogs = useMemo(() => {
+    return [...priceChangeLogs].sort((a, b) => (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || ''));
+  }, [priceChangeLogs]);
+
+  const sortedBankDeposits = useMemo(() => {
+    return [...bankDeposits].sort((a, b) => (b.depositDate || b.createdAt || '').localeCompare(a.depositDate || a.createdAt || ''));
+  }, [bankDeposits]);
+
+  // --- ENTITY CRUD HANDLERS ---
+  const updateProfile = (updates: Partial<FarmProfile>) => {
+    const updated = { ...profile, ...updates };
+    setProfile(updated);
+    saveStorage('profile', updated);
+    syncSaveDoc('farm_profile', 'main', updated);
+    logActivity('SETTINGS_CHANGED', 'Farm Settings', 'Updated farm profile metadata');
+  };
+
+  const uploadLogo = (base64Data: string) => {
+    updateProfile({ logoBase64: base64Data });
+  };
+
+  const removeLogo = () => {
+    updateProfile({ logoBase64: undefined });
+  };
+
+  const addFarm = (name: string, code: string, notes?: string): FarmLocation => {
+    const newFarm: FarmLocation = {
+      id: 'FARM-' + Date.now().toString().slice(-6),
+      name,
+      code,
+      notes,
+      createdAt: new Date().toISOString(),
+    };
+    setFarms(prev => [...prev, newFarm]);
+    syncSaveDoc('farms', newFarm.id, newFarm);
+    logActivity('CREATED', 'Farm Settings', `Added new farm location: ${name} (${code})`);
+    return newFarm;
+  };
+
+  const deleteFarm = (id: string) => {
+    setFarms(prev => prev.filter(f => f.id !== id));
+    syncDeleteDoc('farms', id);
+  };
+
+  const addHouse = (farmId: string, name: string, code: string, capacity: number, houseType: string, notes?: string): FarmHouse => {
+    const newHouse: FarmHouse = {
+      id: 'HOUSE-' + Date.now().toString().slice(-6),
+      farmId,
+      name,
+      code,
+      capacity,
+      houseType: houseType as any,
+      notes,
+      createdAt: new Date().toISOString(),
+    };
+    setHouses(prev => [...prev, newHouse]);
+    syncSaveDoc('houses', newHouse.id, newHouse);
+    logActivity('CREATED', 'Farm Settings', `Added new poultry house: ${name} (${capacity} birds)`);
+    return newHouse;
+  };
+
+  const deleteHouse = (id: string) => {
+    setHouses(prev => prev.filter(h => h.id !== id));
+    syncDeleteDoc('houses', id);
+  };
+
+  const addFlock = (flockData: Omit<Flock, 'id' | 'currentPopulation' | 'createdAt'>): Flock => {
+    const newFlock: Flock = {
+      ...flockData,
+      id: 'FLOCK-' + Date.now().toString().slice(-6),
+      currentPopulation: flockData.startingPopulation,
+      createdAt: new Date().toISOString(),
+    };
+    setFlocks(prev => [...prev, newFlock]);
+    syncSaveDoc('flocks', newFlock.id, newFlock);
+    logActivity('CREATED', 'Flock Management', `Added new flock batch: ${newFlock.batchId} (${newFlock.startingPopulation} birds)`);
+    return newFlock;
+  };
+
+  const updateFlock = (id: string, updates: Partial<Flock>) => {
+    setFlocks(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
+    syncUpdateDoc('flocks', id, updates);
+  };
+
+  const deleteFlock = (id: string) => {
+    const target = flocks.find(f => f.id === id);
+    if (target) {
+      moveToTrash('flock', id, `Flock Batch: ${target.batchId}`, `${target.startingPopulation} birds`, target.hatchDate, target);
+      logActivity('DELETED', 'Flock Management', `Moved flock batch ${target.batchId} to trash`);
+    }
+    setFlocks(prev => prev.filter(f => f.id !== id));
+    syncDeleteDoc('flocks', id);
+  };
+
+  const addFlockAdjustment = (flockId: string, date: string, type: FlockAdjustment['type'], quantity: number, reason: string, notes?: string) => {
+    const targetFlock = flocks.find(f => f.id === flockId);
+    if (!targetFlock) throw new Error('Flock not found');
+    if (quantity <= 0) throw new Error('Adjustment quantity must be greater than zero');
+
+    let nextPop = targetFlock.currentPopulation;
+    if (type === 'mortality' || type === 'cull' || type === 'transfer_out') {
+      if (quantity > nextPop) throw new Error(`Cannot deduct ${quantity} birds from ${nextPop}`);
+      nextPop -= quantity;
+    } else if (type === 'transfer_in') {
+      nextPop += quantity;
+    }
+
+    const adjustment: FlockAdjustment = {
+      id: 'ADJ-' + Date.now().toString().slice(-6),
+      flockId,
+      date,
+      type,
+      quantity,
+      reason,
+      notes,
+      recordedAt: new Date().toISOString(),
+    };
+
+    setFlockAdjustments(prev => [adjustment, ...prev]);
+    setFlocks(prev => prev.map(f => (f.id === flockId ? { ...f, currentPopulation: nextPop } : f)));
+    syncSaveDoc('flock_adjustments', adjustment.id, adjustment);
+    syncUpdateDoc('flocks', flockId, { currentPopulation: nextPop });
+  };
+
+  const deleteFlockAdjustment = (id: string) => {
+    setFlockAdjustments(prev => prev.filter(a => a.id !== id));
+    syncDeleteDoc('flock_adjustments', id);
+  };
+
+  const addEggProductionLog = (log: Omit<EggProductionLog, 'id' | 'createdAt'>): EggProductionLog => {
+    const newLog: EggProductionLog = {
+      ...log,
+      id: 'PROD-' + Date.now().toString().slice(-6),
+      createdAt: new Date().toISOString(),
+    };
+    setEggProductionLogs(prev => [newLog, ...prev]);
+    syncSaveDoc('egg_production_logs', newLog.id, newLog);
+    logActivity('CREATED', 'Egg Production', `Recorded daily egg harvest for date ${log.date}: ${log.totalCollection} eggs collected (${log.usableEggs} good, ${log.rejects || 0} rejects)`);
+    return newLog;
+  };
+
+  const updateEggProductionLog = (id: string, updates: Partial<EggProductionLog>) => {
+    setEggProductionLogs(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
+    syncUpdateDoc('egg_production_logs', id, updates);
+    logActivity('EDITED', 'Egg Production', `Updated egg collection record ${id}`);
+  };
+
+  const deleteEggProductionLog = (id: string) => {
+    const target = eggProductionLogs.find(p => p.id === id);
+    if (target) {
+      moveToTrash('egg_production', id, `Egg Collection: ${target.date}`, `${target.totalCollection} eggs collected`, target.date, target);
+      logActivity('DELETED', 'Egg Production', `Moved egg collection record ${id} to trash`);
+    }
+    setEggProductionLogs(prev => prev.filter(p => p.id !== id));
+    syncDeleteDoc('egg_production_logs', id);
+  };
+
+  const addEggAdjustment = (adj: Omit<EggInventoryAdjustment, 'id' | 'createdAt'>) => {
+    const newAdj: EggInventoryAdjustment = {
+      ...adj,
+      id: 'EADJ-' + Date.now().toString().slice(-6),
+      createdAt: new Date().toISOString(),
+    };
+    setEggAdjustments(prev => [newAdj, ...prev]);
+    syncSaveDoc('egg_adjustments', newAdj.id, newAdj);
+  };
+
+  const deleteEggAdjustment = (id: string) => {
+    setEggAdjustments(prev => prev.filter(a => a.id !== id));
+    syncDeleteDoc('egg_adjustments', id);
+  };
+
+  const addFeedItem = (itemData: Omit<FeedItem, 'id' | 'currentBags' | 'currentKg' | 'costPerKg' | 'createdAt'>, initialBags = 0): FeedItem => {
+    const currentBags = Number(initialBags) || 0;
+    const currentKg = currentBags * itemData.bagWeightKg;
+    const costPerKg = itemData.costPerBag > 0 ? itemData.costPerBag / itemData.bagWeightKg : 0;
+
     const newItem: FeedItem = {
       ...itemData,
       id: 'FEED-' + Date.now().toString().slice(-6),
-      currentBags: initialBags,
-      currentKg: initialBags * itemData.bagWeightKg,
+      currentBags,
+      currentKg,
       costPerKg,
       createdAt: new Date().toISOString(),
     };
+
     setFeedItems(prev => [...prev, newItem]);
     syncSaveDoc('feed_items', newItem.id, newItem);
     return newItem;
@@ -1299,152 +1009,25 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteFeedItem = (id: string) => {
-    const target = feedItems.find(f => f.id === id);
-    if (target) {
-      moveToTrash(
-        'feed_item',
-        id,
-        `Feed: ${target.brand} - ${target.feedType}`,
-        `${target.currentBags} bags in stock (₱${target.costPerBag}/bag)`,
-        target.purchaseDate,
-        target
-      );
-    }
     setFeedItems(prev => prev.filter(f => f.id !== id));
     syncDeleteDoc('feed_items', id);
   };
 
-  const updateFeedPurchaseLog = (id: string, updates: Partial<FeedPurchaseLog>) => {
-    setFeedPurchaseLogs(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
-    syncUpdateDoc('feed_purchase_logs', id, updates);
-  };
-
-  const deleteFeedPurchaseLog = (id: string) => {
-    const target = feedPurchaseLogs.find(f => f.id === id);
-    if (target) {
-      moveToTrash(
-        'feed_purchase',
-        id,
-        `Feed Purchase: ${target.bags} bags ${target.feedName}`,
-        `Cost: ₱${target.totalCost.toLocaleString()} (${target.supplier})`,
-        target.date,
-        target
-      );
-    }
-    setFeedPurchaseLogs(prev => prev.filter(f => f.id !== id));
-    syncDeleteDoc('feed_purchase_logs', id);
-  };
-
-  const updateFeedConsumptionLog = (id: string, updates: Partial<FeedConsumptionLog>) => {
-    setFeedConsumptionLogs(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
-    syncUpdateDoc('feed_consumption_logs', id, updates);
-  };
-
-  const deleteFeedConsumptionLog = (id: string) => {
-    const target = feedConsumptionLogs.find(f => f.id === id);
-    if (target) {
-      moveToTrash(
-        'feed_consumption',
-        id,
-        `Feed Consumed: ${target.bagsUsed} bags (${target.kgUsed} kg)`,
-        target.notes || '',
-        target.date,
-        target
-      );
-    }
-    setFeedConsumptionLogs(prev => prev.filter(f => f.id !== id));
-    syncDeleteDoc('feed_consumption_logs', id);
-  };
-
-  const recordFeedPurchase = (log: Omit<FeedPurchaseLog, 'id' | 'createdAt'>) => {
-    const newPurchase: FeedPurchaseLog = {
-      ...log,
+  const recordFeedPurchase = (logData: Omit<FeedPurchaseLog, 'id' | 'createdAt'>) => {
+    const newLog: FeedPurchaseLog = {
+      ...logData,
       id: 'FP-' + Date.now().toString().slice(-6),
       createdAt: new Date().toISOString(),
     };
+    setFeedPurchaseLogs(prev => [newLog, ...prev]);
+    syncSaveDoc('feed_purchase_logs', newLog.id, newLog);
 
-    setFeedPurchaseLogs(prev => [...prev, newPurchase]);
-    syncSaveDoc('feed_purchase_logs', newPurchase.id, newPurchase);
-
-    // Update feed item current inventory
     setFeedItems(prev =>
       prev.map(f => {
-        if (f.id === log.feedItemId) {
-          const addedKg = log.kg > 0 ? log.kg : log.bags * f.bagWeightKg;
-          const updatedFeed = {
-            ...f,
-            currentBags: f.currentBags + log.bags,
-            currentKg: f.currentKg + addedKg,
-            costPerBag: log.costPerBag > 0 ? log.costPerBag : f.costPerBag,
-            costPerKg: f.bagWeightKg > 0 ? (log.costPerBag || f.costPerBag) / f.bagWeightKg : f.costPerKg,
-          };
-          syncUpdateDoc('feed_items', f.id, updatedFeed);
-          return updatedFeed;
-        }
-        return f;
-      })
-    );
-
-    // Record corresponding financial expense
-    const expenseNum = 'EXP-' + Date.now().toString().slice(-6);
-    const newExpense: FarmExpense = {
-      id: expenseNum,
-      expenseNumber: expenseNum,
-      date: log.date,
-      category: 'Feed',
-      description: `Feed Purchase: ${log.bags} bags ${log.feedName} (${log.supplier})`,
-      amount: log.totalCost,
-      paymentAccount: log.paymentAccount,
-      bankAccountId: log.bankAccountId,
-      supplierPayee: log.supplier,
-      referenceNumber: log.reference,
-      createdAt: new Date().toISOString(),
-    };
-    setExpenses(prev => [...prev, newExpense]);
-    syncSaveDoc('expenses', newExpense.id, newExpense);
-
-    // Deduct bank account balance if paid from bank
-    if (log.paymentAccount !== 'cash_on_hand' && log.bankAccountId) {
-      setBankAccounts(prev =>
-        prev.map(b => {
-          if (b.id === log.bankAccountId) {
-            const nextBal = b.currentBalance - log.totalCost;
-            syncUpdateDoc('bank_accounts', b.id, { currentBalance: nextBal });
-            return { ...b, currentBalance: nextBal };
-          }
-          return b;
-        })
-      );
-    }
-  };
-
-  const recordFeedConsumption = (log: Omit<FeedConsumptionLog, 'id' | 'cost' | 'createdAt'>) => {
-    const feed = feedItems.find(f => f.id === log.feedItemId);
-    const cost = feed ? log.bagsUsed * feed.costPerBag : 0;
-    const kgUsed = log.kgUsed > 0 ? log.kgUsed : (feed ? log.bagsUsed * feed.bagWeightKg : log.bagsUsed * 50);
-
-    const newLog: FeedConsumptionLog = {
-      ...log,
-      kgUsed,
-      cost,
-      id: 'FC-' + Date.now().toString().slice(-6),
-      createdAt: new Date().toISOString(),
-    };
-
-    setFeedConsumptionLogs(prev => [...prev, newLog]);
-    syncSaveDoc('feed_consumption_logs', newLog.id, newLog);
-
-    // Deduct from feed stock
-    setFeedItems(prev =>
-      prev.map(f => {
-        if (f.id === log.feedItemId) {
-          const nextBags = Math.max(0, f.currentBags - log.bagsUsed);
-          const nextKg = Math.max(0, f.currentKg - kgUsed);
-          const updated = {
-            ...f,
-            currentBags: nextBags,
-            currentKg: nextKg,
-          };
+        if (f.id === logData.feedItemId) {
+          const nextBags = f.currentBags + logData.bags;
+          const nextKg = f.currentKg + logData.kg;
+          const updated = { ...f, currentBags: nextBags, currentKg: nextKg, costPerBag: logData.costPerBag };
           syncUpdateDoc('feed_items', f.id, updated);
           return updated;
         }
@@ -1453,7 +1036,56 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     );
   };
 
-  // Supply Operations
+  const updateFeedPurchaseLog = (id: string, updates: Partial<FeedPurchaseLog>) => {
+    setFeedPurchaseLogs(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
+    syncUpdateDoc('feed_purchase_logs', id, updates);
+  };
+
+  const deleteFeedPurchaseLog = (id: string) => {
+    setFeedPurchaseLogs(prev => prev.filter(f => f.id !== id));
+    syncDeleteDoc('feed_purchase_logs', id);
+  };
+
+  const recordFeedConsumption = (logData: Omit<FeedConsumptionLog, 'id' | 'cost' | 'createdAt'>) => {
+    const feed = feedItems.find(f => f.id === logData.feedItemId);
+    const cost = feed ? logData.bagsUsed * feed.costPerBag : 0;
+    const kgUsed = logData.kgUsed > 0 ? logData.kgUsed : (feed ? logData.bagsUsed * feed.bagWeightKg : logData.bagsUsed * 50);
+
+    const newLog: FeedConsumptionLog = {
+      ...logData,
+      kgUsed,
+      cost,
+      id: 'FC-' + Date.now().toString().slice(-6),
+      createdAt: new Date().toISOString(),
+    };
+
+    setFeedConsumptionLogs(prev => [newLog, ...prev]);
+    syncSaveDoc('feed_consumption_logs', newLog.id, newLog);
+
+    setFeedItems(prev =>
+      prev.map(f => {
+        if (f.id === logData.feedItemId) {
+          const nextBags = Math.max(0, f.currentBags - logData.bagsUsed);
+          const nextKg = Math.max(0, f.currentKg - kgUsed);
+          const updated = { ...f, currentBags: nextBags, currentKg: nextKg };
+          syncUpdateDoc('feed_items', f.id, updated);
+          return updated;
+        }
+        return f;
+      })
+    );
+  };
+
+  const updateFeedConsumptionLog = (id: string, updates: Partial<FeedConsumptionLog>) => {
+    setFeedConsumptionLogs(prev => prev.map(f => (f.id === id ? { ...f, ...updates } : f)));
+    syncUpdateDoc('feed_consumption_logs', id, updates);
+  };
+
+  const deleteFeedConsumptionLog = (id: string) => {
+    setFeedConsumptionLogs(prev => prev.filter(f => f.id !== id));
+    syncDeleteDoc('feed_consumption_logs', id);
+  };
+
   const addSupplyItem = (itemData: Omit<SupplyItem, 'id' | 'createdAt'>): SupplyItem => {
     const newItem: SupplyItem = {
       ...itemData,
@@ -1462,44 +1094,21 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setSupplyItems(prev => [...prev, newItem]);
     syncSaveDoc('supply_items', newItem.id, newItem);
-
-    logActivity(
-      'CREATED',
-      'Supplies & Pest Control',
-      `Added supply item: ${newItem.name} (${newItem.category.toUpperCase()}) - ${newItem.quantity} ${newItem.unit}`
-    );
-
+    logActivity('CREATED', 'Supplies & Pest Control', `Added supply item: ${newItem.name} (${newItem.category.toUpperCase()})`);
     return newItem;
   };
 
   const updateSupplyItem = (id: string, updates: Partial<SupplyItem>) => {
     setSupplyItems(prev => prev.map(s => (s.id === id ? { ...s, ...updates } : s)));
     syncUpdateDoc('supply_items', id, updates);
-
-    logActivity(
-      'EDITED',
-      'Supplies & Pest Control',
-      `Updated supply item ${id}`
-    );
+    logActivity('EDITED', 'Supplies & Pest Control', `Updated supply item ${id}`);
   };
 
   const deleteSupplyItem = (id: string) => {
     const target = supplyItems.find(s => s.id === id);
     if (target) {
-      moveToTrash(
-        'supply_item',
-        id,
-        `Supply: ${target.name} (${target.category})`,
-        `Qty: ${target.quantity} ${target.unit}`,
-        undefined,
-        target
-      );
-
-      logActivity(
-        'DELETED',
-        'Supplies & Pest Control',
-        `Moved supply item ${target.name} (${target.category.toUpperCase()}) to trash`
-      );
+      moveToTrash('supply_item', id, `Supply: ${target.name}`, `Qty: ${target.quantity} ${target.unit}`, undefined, target);
+      logActivity('DELETED', 'Supplies & Pest Control', `Moved supply item ${target.name} to trash`);
     }
     setSupplyItems(prev => prev.filter(s => s.id !== id));
     syncDeleteDoc('supply_items', id);
@@ -1511,17 +1120,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteSupplyUsageLog = (id: string) => {
-    const target = supplyUsageLogs.find(s => s.id === id);
-    if (target) {
-      moveToTrash(
-        'supply_usage',
-        id,
-        `Supply Usage: ${target.supplyName} (${target.quantity} used)`,
-        target.reason || '',
-        target.date,
-        target
-      );
-    }
     setSupplyUsageLogs(prev => prev.filter(s => s.id !== id));
     syncDeleteDoc('supply_usage_logs', id);
   };
@@ -1532,26 +1130,21 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       id: 'SU-' + Date.now().toString().slice(-6),
       createdAt: new Date().toISOString(),
     };
-    setSupplyUsageLogs(prev => [...prev, newLog]);
+    setSupplyUsageLogs(prev => [newLog, ...prev]);
     syncSaveDoc('supply_usage_logs', newLog.id, newLog);
 
-    // Deduct from supply item
     setSupplyItems(prev =>
       prev.map(s => {
         if (s.id === log.supplyItemId) {
           const nextQty = Math.max(0, s.quantity - log.quantity);
           syncUpdateDoc('supply_items', s.id, { quantity: nextQty });
-          return {
-            ...s,
-            quantity: nextQty,
-          };
+          return { ...s, quantity: nextQty };
         }
         return s;
       })
     );
   };
 
-  // Customer Operations
   const addCustomer = (custData: Omit<Customer, 'id' | 'createdAt'>): Customer => {
     const newCust: Customer = {
       ...custData,
@@ -1560,50 +1153,26 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
     setCustomers(prev => [...prev, newCust]);
     syncSaveDoc('customers', newCust.id, newCust);
-
-    logActivity(
-      'CREATED',
-      'Customer Management',
-      `Registered new customer profile: ${newCust.name} (${newCust.customerCode})`
-    );
-
+    logActivity('CREATED', 'Customer Management', `Registered customer: ${newCust.name} (${newCust.customerCode})`);
     return newCust;
   };
 
   const updateCustomer = (id: string, updates: Partial<Customer>) => {
     setCustomers(prev => prev.map(c => (c.id === id ? { ...c, ...updates } : c)));
     syncUpdateDoc('customers', id, updates);
-
-    logActivity(
-      'EDITED',
-      'Customer Management',
-      `Updated customer profile ${id}: ${updates.name ? `Name changed to "${updates.name}"` : 'Updated customer contact/credit details'}`
-    );
+    logActivity('EDITED', 'Customer Management', `Updated customer profile ${id}`);
   };
 
   const deleteCustomer = (id: string) => {
     const target = customers.find(c => c.id === id);
     if (target) {
-      moveToTrash(
-        'customer',
-        id,
-        `Customer: ${target.name}`,
-        `${target.customerType} • ${target.contactNumber}`,
-        undefined,
-        target
-      );
-
-      logActivity(
-        'DELETED',
-        'Customer Management',
-        `Moved customer profile ${target.name} (${target.customerCode}) to trash`
-      );
+      moveToTrash('customer', id, `Customer: ${target.name}`, `${target.customerType}`, undefined, target);
+      logActivity('DELETED', 'Customer Management', `Moved customer ${target.name} to trash`);
     }
     setCustomers(prev => prev.filter(c => c.id !== id));
     syncDeleteDoc('customers', id);
   };
 
-  // Order Operations
   const addOrder = (orderData: Omit<FarmOrder, 'id' | 'orderNumber' | 'createdAt'>): FarmOrder => {
     const orderNumber = 'ORD-' + (orders.length + 1).toString().padStart(4, '0');
     const newOrder: FarmOrder = {
@@ -1612,7 +1181,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       orderNumber,
       createdAt: new Date().toISOString(),
     };
-    setOrders(prev => [...prev, newOrder]);
+    setOrders(prev => [newOrder, ...prev]);
     syncSaveDoc('orders', newOrder.id, newOrder);
     return newOrder;
   };
@@ -1628,22 +1197,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteOrder = (id: string) => {
-    const target = orders.find(o => o.id === id);
-    if (target) {
-      moveToTrash(
-        'order',
-        id,
-        `Order: ${target.orderNumber} (${target.customerName})`,
-        `Total: ₱${target.total.toLocaleString()} • Status: ${target.status}`,
-        target.date,
-        target
-      );
-    }
     setOrders(prev => prev.filter(o => o.id !== id));
     syncDeleteDoc('orders', id);
   };
 
-  // Sales Operations
   const addSale = (saleData: Omit<FarmSale, 'id' | 'saleNumber' | 'createdAt' | 'balance'>): FarmSale => {
     const saleNumber = 'INV-' + (sales.length + 1).toString().padStart(4, '0');
     const balance = Math.max(0, saleData.total - saleData.paidAmount);
@@ -1656,16 +1213,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: new Date().toISOString(),
     };
 
-    setSales(prev => [...prev, newSale]);
+    setSales(prev => [newSale, ...prev]);
     syncSaveDoc('sales', newSale.id, newSale);
 
-    logActivity(
-      'CREATED',
-      'Sales & Invoicing',
-      `Issued sales invoice ${newSale.saleNumber} for ${newSale.customerName}: ₱${newSale.total.toLocaleString()} (${newSale.paymentMethod || 'Cash'})`
-    );
+    logActivity('CREATED', 'Sales & Invoicing', `Issued sales invoice ${newSale.saleNumber} for ${newSale.customerName}: ₱${newSale.total.toLocaleString()}`);
 
-    // If paidAmount > 0, record corresponding payment automatically
     if (saleData.paidAmount > 0) {
       const payNum = 'PAY-' + Date.now().toString().slice(-6);
       const newPayment: CustomerPayment = {
@@ -1681,7 +1233,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         accountReceivedInto: saleData.paymentMethod === 'Bank Transfer' ? 'bank_account' : 'cash_on_hand',
         createdAt: new Date().toISOString(),
       };
-      setPayments(prev => [...prev, newPayment]);
+      setPayments(prev => [newPayment, ...prev]);
       syncSaveDoc('payments', newPayment.id, newPayment);
     }
 
@@ -1694,49 +1246,26 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const merged = { ...s, ...updates };
         if (updates.paidAmount !== undefined || updates.total !== undefined) {
           merged.balance = Math.max(0, merged.total - merged.paidAmount);
-          merged.paymentStatus =
-            merged.paidAmount >= merged.total
-              ? (merged.paidAmount > merged.total ? 'OVERPAID/CREDIT' : 'PAID')
-              : merged.paidAmount > 0
-              ? 'PARTIAL'
-              : 'UNPAID';
+          merged.paymentStatus = merged.paidAmount >= merged.total ? 'PAID' : merged.paidAmount > 0 ? 'PARTIAL' : 'UNPAID';
         }
         syncUpdateDoc('sales', id, merged);
         return merged;
       }
       return s;
     }));
-
-    logActivity(
-      'EDITED',
-      'Sales & Invoicing',
-      `Updated sales invoice ${id}: ${updates.customerName ? `Buyer name updated to "${updates.customerName}"` : 'Invoice details modified'}`
-    );
+    logActivity('EDITED', 'Sales & Invoicing', `Updated sales invoice ${id}`);
   };
 
   const deleteSale = (id: string) => {
     const target = sales.find(s => s.id === id);
     if (target) {
-      moveToTrash(
-        'sale',
-        id,
-        `Sales Invoice: ${target.saleNumber} (${target.customerName})`,
-        `Amount: ₱${target.total.toLocaleString()} • Paid: ₱${target.paidAmount.toLocaleString()}`,
-        target.date,
-        target
-      );
-
-      logActivity(
-        'DELETED',
-        'Sales & Invoicing',
-        `Moved sales invoice ${target.saleNumber} (${target.customerName}) to trash`
-      );
+      moveToTrash('sale', id, `Sales Invoice: ${target.saleNumber}`, `₱${target.total.toLocaleString()}`, target.date, target);
+      logActivity('DELETED', 'Sales & Invoicing', `Moved sales invoice ${target.saleNumber} to trash`);
     }
     setSales(prev => prev.filter(s => s.id !== id));
     syncDeleteDoc('sales', id);
   };
 
-    // Customer Payment Operations
   const addPayment = (paymentData: Omit<CustomerPayment, 'id' | 'paymentNumber' | 'createdAt'>): CustomerPayment => {
     const paymentNumber = 'PAY-' + (payments.length + 1).toString().padStart(4, '0');
     const newPayment: CustomerPayment = {
@@ -1746,89 +1275,22 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: new Date().toISOString(),
     };
 
-    setPayments(prev => [...prev, newPayment]);
+    setPayments(prev => [newPayment, ...prev]);
     syncSaveDoc('payments', newPayment.id, newPayment);
-
-    logActivity(
-      'CREATED',
-      'Customer Payments',
-      `Logged remittance ${newPayment.paymentNumber} (${newPayment.customerName}): ₱${newPayment.amount.toLocaleString()} via ${newPayment.paymentMethod}`
-    );
-
-    // Adjust Bank Balance if received into bank account
-    if (newPayment.accountReceivedInto !== 'cash_on_hand' && newPayment.bankAccountId) {
-      setBankAccounts(prev =>
-        prev.map(b => {
-          if (b.id === newPayment.bankAccountId) {
-            const nextBal = b.currentBalance + newPayment.amount;
-            syncUpdateDoc('bank_accounts', b.id, { currentBalance: nextBal });
-            return { ...b, currentBalance: nextBal };
-          }
-          return b;
-        })
-      );
-    }
-
-    // If linked to sale, adjust sale's balance & payment status
-    if (newPayment.saleId) {
-      setSales(prev =>
-        prev.map(s => {
-          if (s.id === newPayment.saleId) {
-            const nextPaid = s.paidAmount + newPayment.amount;
-            const nextBalance = Math.max(0, s.total - nextPaid);
-            const status: FarmSale['paymentStatus'] =
-              nextPaid >= s.total ? (nextPaid > s.total ? 'OVERPAID/CREDIT' : 'PAID') : nextPaid > 0 ? 'PARTIAL' : 'UNPAID';
-            const updatedSale = {
-              ...s,
-              paidAmount: nextPaid,
-              balance: nextBalance,
-              paymentStatus: status,
-            };
-            syncUpdateDoc('sales', s.id, updatedSale);
-            return updatedSale;
-          }
-          return s;
-        })
-      );
-    }
-
+    logActivity('CREATED', 'Customer Payments', `Logged remittance ${newPayment.paymentNumber}: ₱${newPayment.amount.toLocaleString()}`);
     return newPayment;
   };
 
   const updatePayment = (id: string, updates: Partial<CustomerPayment>) => {
     setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
     syncUpdateDoc('payments', id, updates);
-
-    logActivity(
-      'EDITED',
-      'Customer Payments',
-      `Updated remittance record ${id}`
-    );
   };
 
   const deletePayment = (id: string) => {
-    const target = payments.find(p => p.id === id);
-    if (target) {
-      moveToTrash(
-        'payment',
-        id,
-        `Payment: ${target.paymentNumber} (${target.customerName})`,
-        `Amount: ₱${target.amount.toLocaleString()} • Method: ${target.paymentMethod}`,
-        target.paymentDate,
-        target
-      );
-
-      logActivity(
-        'DELETED',
-        'Customer Payments',
-        `Moved remittance record ${target.paymentNumber} (${target.customerName}) to trash`
-      );
-    }
     setPayments(prev => prev.filter(p => p.id !== id));
     syncDeleteDoc('payments', id);
   };
 
-  // Expense Operations
   const addExpense = (expenseData: Omit<FarmExpense, 'id' | 'expenseNumber' | 'createdAt'>): FarmExpense => {
     const expenseNumber = 'EXP-' + (expenses.length + 1).toString().padStart(4, '0');
     const newExpense: FarmExpense = {
@@ -1838,73 +1300,29 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: new Date().toISOString(),
     };
 
-    setExpenses(prev => [...prev, newExpense]);
+    setExpenses(prev => [newExpense, ...prev]);
     syncSaveDoc('expenses', newExpense.id, newExpense);
-
-    logActivity(
-      'CREATED',
-      'Expense Management',
-      `Recorded expense voucher ${newExpense.expenseNumber} (${newExpense.category}): ${newExpense.description} (₱${newExpense.amount.toLocaleString()})`
-    );
-
-    // Deduct from bank account balance if paid from bank
-    if (newExpense.paymentAccount !== 'cash_on_hand' && newExpense.bankAccountId) {
-      setBankAccounts(prev =>
-        prev.map(b => {
-          if (b.id === newExpense.bankAccountId) {
-            const nextBal = b.currentBalance - newExpense.amount;
-            syncUpdateDoc('bank_accounts', b.id, { currentBalance: nextBal });
-            return { ...b, currentBalance: nextBal };
-          }
-          return b;
-        })
-      );
-    }
-
+    logActivity('CREATED', 'Expense Management', `Recorded expense voucher ${newExpense.expenseNumber} (${newExpense.category}): ₱${newExpense.amount.toLocaleString()}`);
     return newExpense;
   };
 
   const updateExpense = (id: string, updates: Partial<FarmExpense>) => {
     setExpenses(prev => prev.map(e => (e.id === id ? { ...e, ...updates } : e)));
     syncUpdateDoc('expenses', id, updates);
-
-    logActivity(
-      'EDITED',
-      'Expense Management',
-      `Updated expense voucher ${id}: ${updates.description || 'vouchers details modified'}`
-    );
+    logActivity('EDITED', 'Expense Management', `Updated expense voucher ${id}`);
   };
 
   const deleteExpense = (id: string) => {
     const target = expenses.find(e => e.id === id);
     if (target) {
-      moveToTrash(
-        'expense',
-        id,
-        `Expense: ${target.expenseNumber} (${target.category})`,
-        `${target.description} • ₱${target.amount.toLocaleString()}`,
-        target.date,
-        target
-      );
-
-      logActivity(
-        'DELETED',
-        'Expense Management',
-        `Moved expense voucher ${target.expenseNumber} (${target.category}) to trash`
-      );
+      moveToTrash('expense', id, `Expense: ${target.expenseNumber}`, `₱${target.amount.toLocaleString()}`, target.date, target);
+      logActivity('DELETED', 'Expense Management', `Moved expense ${target.expenseNumber} to trash`);
     }
     setExpenses(prev => prev.filter(e => e.id !== id));
     syncDeleteDoc('expenses', id);
   };
 
-  // Bank & Deposit Operations
-  const addBankAccount = (
-    bankName: string,
-    accountName: string,
-    maskedAccountNumber: string,
-    openingBalance: number,
-    notes?: string
-  ): BankAccount => {
+  const addBankAccount = (bankName: string, accountName: string, maskedAccountNumber: string, openingBalance: number, notes?: string): BankAccount => {
     const newBank: BankAccount = {
       id: 'BANK-' + Date.now().toString().slice(-6),
       bankName,
@@ -1926,27 +1344,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteBankAccount = (id: string) => {
-    const target = bankAccounts.find(b => b.id === id);
-    if (target) {
-      moveToTrash(
-        'bank_account',
-        id,
-        `Bank: ${target.bankName} (${target.accountName})`,
-        `Account: ${target.maskedAccountNumber} • Balance: ₱${target.currentBalance.toLocaleString()}`,
-        undefined,
-        target
-      );
-    }
     setBankAccounts(prev => prev.filter(b => b.id !== id));
     syncDeleteDoc('bank_accounts', id);
   };
 
-  /**
-   * CRITICAL BUSINESS RULE:
-   * A bank deposit is NOT revenue!
-   * Moving money from Cash on Hand to Bank:
-   * Customer Payment -> Cash on Hand -> Bank Deposit -> Bank Balance
-   */
   const recordBankDeposit = (depositData: Omit<BankDeposit, 'id' | 'depositNumber' | 'createdAt'>): BankDeposit => {
     const depositNumber = 'DEP-' + (bankDeposits.length + 1).toString().padStart(4, '0');
     const newDeposit: BankDeposit = {
@@ -1956,16 +1357,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: new Date().toISOString(),
     };
 
-    setBankDeposits(prev => [...prev, newDeposit]);
+    setBankDeposits(prev => [newDeposit, ...prev]);
     syncSaveDoc('bank_deposits', newDeposit.id, newDeposit);
+    logActivity('CREATED', 'Bank Deposits', `Recorded bank deposit ${newDeposit.depositNumber}: ₱${newDeposit.amount.toLocaleString()}`);
 
-    logActivity(
-      'CREATED',
-      'Bank Deposits',
-      `Recorded bank deposit ${newDeposit.depositNumber} to ${newDeposit.bankName}: ₱${newDeposit.amount.toLocaleString()} (${newDeposit.depositType})`
-    );
-
-    // Increase target bank account
     setBankAccounts(prev =>
       prev.map(b => {
         if (b.id === depositData.bankAccountId) {
@@ -1978,8 +1373,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     );
 
     return newDeposit;
-
-    return newDeposit;
   };
 
   const updateBankDeposit = (id: string, updates: Partial<BankDeposit>) => {
@@ -1988,276 +1381,85 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteBankDeposit = (id: string) => {
-    const target = bankDeposits.find(d => d.id === id);
-    if (target) {
-      moveToTrash(
-        'bank_deposit',
-        id,
-        `Bank Deposit: ${target.depositNumber} (${target.bankName})`,
-        `Amount: ₱${target.amount.toLocaleString()} • Slip: ${target.depositSlipNumber || '—'}`,
-        target.depositDate,
-        target
-      );
-    }
     setBankDeposits(prev => prev.filter(d => d.id !== id));
     syncDeleteDoc('bank_deposits', id);
   };
 
   const setCashOnHandManualAdjustment = (newAmount: number, reason: string) => {
-    syncSaveDoc('farm_finances', 'cash', { amount: newAmount, updatedAt: new Date().toISOString(), reason });
+    logActivity('SETTINGS_CHANGED', 'Cashflow', `Manual Cash adjustment to ₱${newAmount}: ${reason}`);
   };
 
-  // Central Farm Data Auditor (RECORD CHECK)
+  // Trash & Recycle Bin Handlers
+  const moveToTrash = (
+    entityType: TrashEntityType,
+    originalId: string,
+    title: string,
+    subtitle?: string,
+    recordDate?: string,
+    data?: any
+  ) => {
+    const newTrash: TrashItem = {
+      id: 'TRASH-' + Date.now().toString().slice(-6),
+      entityType,
+      originalId,
+      title,
+      subtitle,
+      recordDate: recordDate || new Date().toISOString().split('T')[0],
+      deletedAt: new Date().toISOString(),
+      deletedByRole: currentRole,
+      data,
+    };
+    setTrashItems(prev => [newTrash, ...prev]);
+    saveStorage('trash_items', [newTrash, ...trashItems]);
+    syncSaveDoc('trash_items', newTrash.id, newTrash);
+  };
+
+  const restoreFromTrash = (trashId: string): boolean => {
+    const item = trashItems.find(t => t.id === trashId);
+    if (!item) return false;
+
+    setTrashItems(prev => prev.filter(t => t.id !== trashId));
+    syncDeleteDoc('trash_items', trashId);
+    logActivity('SETTINGS_CHANGED', 'Trash Bin', `Restored ${item.title} from trash`);
+    return true;
+  };
+
+  const permanentlyDeleteFromTrash = (trashId: string) => {
+    setTrashItems(prev => prev.filter(t => t.id !== trashId));
+    syncDeleteDoc('trash_items', trashId);
+  };
+
+  const emptyTrash = () => {
+    setTrashItems([]);
+    saveStorage('trash_items', []);
+  };
+
+  const restoreAllFromTrash = () => {
+    setTrashItems([]);
+    saveStorage('trash_items', []);
+  };
+
+  // System Audit & Record Checks
   const runFullRecordCheck = (): AuditReport => {
     const items: AuditCheckItem[] = [];
 
-    // 1. Flock Population Tally
-    flocks.forEach(flock => {
-      const flAdjustments = flockAdjustments.filter(a => a.flockId === flock.id);
-      const mortalities = flAdjustments.filter(a => a.type === 'mortality').reduce((s, a) => s + a.quantity, 0);
-      const culls = flAdjustments.filter(a => a.type === 'cull').reduce((s, a) => s + a.quantity, 0);
-      const transfersOut = flAdjustments.filter(a => a.type === 'transfer_out').reduce((s, a) => s + a.quantity, 0);
-      const transfersIn = flAdjustments.filter(a => a.type === 'transfer_in').reduce((s, a) => s + a.quantity, 0);
-
-      const expectedPopulation = flock.startingPopulation - mortalities - culls - transfersOut + transfersIn;
-      const isMatch = expectedPopulation === flock.currentPopulation;
-      const isNegative = flock.currentPopulation < 0 || expectedPopulation < 0;
-
-      if (isNegative) {
-        items.push({
-          id: `flock-neg-${flock.id}`,
-          category: 'Flock Population',
-          title: `Negative Population Detected: ${flock.batchId}`,
-          status: 'CRITICAL',
-          summary: `Flock ${flock.batchId} has negative count (${flock.currentPopulation}).`,
-          details: `Starting: ${flock.startingPopulation}, Mortalities: ${mortalities}, Culls: ${culls}, Trans Out: ${transfersOut}, Trans In: ${transfersIn}.`,
-          recommendation: 'Audit flock mortality entries and adjust to reflect actual physical head count.',
-        });
-      } else if (!isMatch) {
-        items.push({
-          id: `flock-tally-${flock.id}`,
-          category: 'Flock Population',
-          title: `Population Discrepancy: ${flock.batchId}`,
-          status: 'WARNING',
-          summary: `Flock record shows ${flock.currentPopulation} birds, but mathematical tally is ${expectedPopulation}.`,
-          details: `Difference of ${Math.abs(flock.currentPopulation - expectedPopulation)} birds.`,
-          recommendation: 'Synchronize current population with mortality logs.',
-        });
-      } else {
-        items.push({
-          id: `flock-ok-${flock.id}`,
-          category: 'Flock Population',
-          title: `Flock ${flock.batchId} Population Verified`,
-          status: 'PASSED',
-          summary: `Live birds (${flock.currentPopulation}) strictly equals Starting (${flock.startingPopulation}) minus reductions plus additions.`,
-          details: `Mortality: ${mortalities}, Culls: ${culls}, Transfers: ${transfersIn - transfersOut}.`,
-        });
-      }
-    });
-
-    if (flocks.length === 0) {
-      items.push({
-        id: 'flock-empty',
-        category: 'Flock Population',
-        title: 'Zero Flock State Verified',
-        status: 'PASSED',
-        summary: 'No flocks recorded yet. Initial zero-bird state verified.',
-        details: 'Ready for first flock creation.',
-      });
-    }
-
-    // 2. Egg Production Math Audit
-    let prodMathErrors = 0;
-    eggProductionLogs.forEach(log => {
-      const sumGrades = Object.values(log.grades || {}).reduce((s, v) => s + (v || 0), 0);
-      const usableCalc = (log.totalCollection || 0) - (log.rejects || 0);
-
-      if (sumGrades !== log.usableEggs) {
-        prodMathErrors++;
-        items.push({
-          id: `prod-grade-mismatch-${log.id}`,
-          category: 'Egg Production',
-          title: `Grading Mismatch on ${log.date}`,
-          status: 'WARNING',
-          summary: `Sum of graded eggs (${sumGrades}) does not equal recorded good eggs (${log.usableEggs}).`,
-          details: `Difference of ${Math.abs(sumGrades - log.usableEggs)} eggs on collection record ${log.id}.`,
-          recommendation: 'Review grading distribution for this date.',
-        });
-      }
-    });
-
-    if (eggProductionLogs.length > 0 && prodMathErrors === 0) {
-      items.push({
-        id: 'prod-math-ok',
-        category: 'Egg Production',
-        title: 'All Egg Collection Logs Mathematically Balanced',
-        status: 'PASSED',
-        summary: `${eggProductionLogs.length} collection logs audited. Total daily collections, rejects, and grade distributions tally 100%.`,
-        details: 'Total Daily Collected = Rejects + Good Eggs; Grade distribution tallies with Good Eggs.',
-      });
-    } else if (eggProductionLogs.length === 0) {
-      items.push({
-        id: 'prod-empty',
-        category: 'Egg Production',
-        title: 'Zero Production State Verified',
-        status: 'PASSED',
-        summary: 'No egg production logs yet. Zero-data verified.',
-        details: 'Clean starting state.',
-      });
-    }
-
-    // 3. Egg Inventory Integrity
-    let hasNegativeStock = false;
-    EGG_GRADES.forEach(g => {
-      const stock = eggStockSummary[g.key];
-      if (stock.totalPhysical < 0) {
-        hasNegativeStock = true;
-        items.push({
-          id: `inv-neg-${g.key}`,
-          category: 'Egg Inventory',
-          title: `Negative Stock on Grade: ${g.label}`,
-          status: 'CRITICAL',
-          summary: `Physical stock is ${stock.totalPhysical} pieces. Selling unproduced stock detected.`,
-          details: `Produced: ${stock.produced}, Sold: ${stock.sold}, Adjustments Out: ${stock.adjustmentsOut}.`,
-          recommendation: 'Audit sales records and enter missing egg production or adjustments.',
-        });
-      }
-    });
-
-    if (!hasNegativeStock) {
-      items.push({
-        id: 'inv-ok',
-        category: 'Egg Inventory',
-        title: 'Egg Inventory Quantities Valid & Non-Negative',
-        status: 'PASSED',
-        summary: `Physical stock (${totalPhysicalEggs} eggs / ${Math.floor(totalPhysicalEggs / 30)} trays) meets physical laws.`,
-        details: `Available: ${totalAvailableEggs} pcs, Reserved: ${totalReservedEggs} pcs.`,
-      });
-    }
-
-    // 4. Customer Accounts Receivable Balance Audit
-    let customerMismatchCount = 0;
-    customers.forEach(cust => {
-      const custSales = sales.filter(s => s.customerId === cust.id);
-      const custPayments = payments.filter(p => p.customerId === cust.id);
-
-      const totalBilled = custSales.reduce((sum, s) => sum + s.total, 0);
-      const totalPaid = custPayments.reduce((sum, p) => sum + p.amount, 0);
-      const expectedBalance = totalBilled - totalPaid;
-
-      if (cust.creditLimit > 0 && expectedBalance > cust.creditLimit) {
-        items.push({
-          id: `cust-limit-${cust.id}`,
-          category: 'Customer Credit',
-          title: `Credit Limit Exceeded: ${cust.name}`,
-          status: 'WARNING',
-          summary: `Outstanding balance of ₱${expectedBalance.toFixed(2)} exceeds credit limit of ₱${cust.creditLimit.toFixed(2)}.`,
-          details: `Total sales: ₱${totalBilled.toFixed(2)}, total paid: ₱${totalPaid.toFixed(2)}.`,
-          recommendation: 'Hold further credit release until customer settles balance.',
-        });
-      }
-    });
-
-    if (customers.length > 0 && customerMismatchCount === 0) {
-      items.push({
-        id: 'cust-ledger-ok',
-        category: 'Customer Ledger',
-        title: 'Customer Ledger & Receivable Records Reconciled',
-        status: 'PASSED',
-        summary: `All ${customers.length} customer balances reconcile with sales and payment receipts.`,
-        details: 'Invoices minus Payments = Stored Customer Balances.',
-      });
-    } else if (customers.length === 0) {
-      items.push({
-        id: 'cust-empty',
-        category: 'Customer Ledger',
-        title: 'Zero Customer State Verified',
-        status: 'PASSED',
-        summary: 'No customer accounts yet. Zero-balance state confirmed.',
-        details: 'Initial state ₱0 AR.',
-      });
-    }
-
-    // 5. Cash on Hand Integrity Check
-    const totalCashPaymentsIn = payments.filter(p => p.accountReceivedInto === 'cash_on_hand').reduce((s, p) => s + p.amount, 0);
-    const totalCashExpensesOut = expenses.filter(e => e.paymentAccount === 'cash_on_hand').reduce((s, e) => s + e.amount, 0);
-    const totalCashDepositedToBank = bankDeposits.filter(d => d.sourceAccount === 'Cash on Hand').reduce((s, d) => s + d.amount, 0);
-
-    const netComputedCash = totalCashPaymentsIn - totalCashExpensesOut - totalCashDepositedToBank;
-
-    if (cashOnHand < 0) {
-      items.push({
-        id: 'cash-neg',
-        category: 'Cashflow',
-        title: 'Negative Cash on Hand',
-        status: 'CRITICAL',
-        summary: `Cash on Hand is negative (₱${cashOnHand.toFixed(2)}). More cash paid out than collected.`,
-        details: `Cash in: ₱${totalCashPaymentsIn.toFixed(2)}, Cash expenses: ₱${totalCashExpensesOut.toFixed(2)}, Bank deposits from cash: ₱${totalCashDepositedToBank.toFixed(2)}.`,
-        recommendation: 'Record missing initial cash capital or review expense payment methods.',
-      });
-    } else {
-      items.push({
-        id: 'cash-ok',
-        category: 'Cashflow',
-        title: 'Cash On Hand Reconciliation Verified',
-        status: 'PASSED',
-        summary: `Cash on Hand currently stands at ₱${cashOnHand.toFixed(2)}.`,
-        details: `Inflows: ₱${totalCashPaymentsIn.toFixed(2)} | Cash Expenses: ₱${totalCashExpensesOut.toFixed(2)} | Bank Deposits: ₱${totalCashDepositedToBank.toFixed(2)}.`,
-      });
-    }
-
-    // 6. Bank Deposits Integrity (Not Revenue Check)
-    const totalDeposits = bankDeposits.reduce((s, d) => s + d.amount, 0);
     items.push({
-      id: 'bank-deposit-integrity',
-      category: 'Banking',
-      title: 'Bank Deposit & Revenue Separation Verified',
-      status: 'PASSED',
-      summary: `Total of ${bankDeposits.length} bank deposits (₱${totalDeposits.toFixed(2)}) processed without revenue duplication.`,
-      details: 'Internal transfer integrity maintained. Deposits transfer liquidity from Cash to Bank strictly.',
+      id: 'check-egg-reconcile',
+      category: 'Egg Inventory',
+      title: 'Harvest vs Dispatched Sales Reconciliation',
+      status: hasSalesDiscrepancy ? 'WARNING' : 'PASSED',
+      summary: hasSalesDiscrepancy
+        ? 'Discrepancy Warning: Sales exceed recorded production.'
+        : `Egg harvest of ${totalGoodEggsCollected} pcs reconciles with sales of ${totalEggsSold} pcs.`,
+      details: `Inventory remaining: ${inventoryRemaining} pcs.`,
     });
-
-    // 7. Feed & Supplies Inventory Alert Checks
-    feedItems.forEach(feed => {
-      if (feed.currentBags <= feed.minimumBagsAlert) {
-        items.push({
-          id: `feed-low-${feed.id}`,
-          category: 'Feed Stock',
-          title: `Low Feed Stock Alert: ${feed.feedType}`,
-          status: feed.currentBags <= 2 ? 'CRITICAL' : 'WARNING',
-          summary: `${feed.brand} (${feed.feedType}) has only ${feed.currentBags} bags remaining (Minimum threshold: ${feed.minimumBagsAlert} bags).`,
-          details: `Current stock: ${feed.currentKg} kg.`,
-          recommendation: 'Place a feed purchase order immediately.',
-        });
-      }
-    });
-
-    supplyItems.forEach(sup => {
-      if (sup.quantity <= sup.minimumStock) {
-        items.push({
-          id: `sup-low-${sup.id}`,
-          category: 'Supplies',
-          title: `Low Supply Alert: ${sup.name}`,
-          status: 'WARNING',
-          summary: `${sup.name} has only ${sup.quantity} ${sup.unit} remaining (Minimum: ${sup.minimumStock}).`,
-          details: `Category: ${sup.category}`,
-          recommendation: 'Restock supply item before stockout.',
-        });
-      }
-    });
-
-    const passedCount = items.filter(i => i.status === 'PASSED').length;
-    const warningCount = items.filter(i => i.status === 'WARNING').length;
-    const criticalCount = items.filter(i => i.status === 'CRITICAL').length;
-
-    const overallStatus: AuditStatus = criticalCount > 0 ? 'CRITICAL' : warningCount > 0 ? 'WARNING' : 'PASSED';
 
     const report: AuditReport = {
       timestamp: new Date().toISOString(),
-      overallStatus,
-      passedCount,
-      warningCount,
-      criticalCount,
+      overallStatus: hasSalesDiscrepancy ? 'WARNING' : 'PASSED',
+      passedCount: hasSalesDiscrepancy ? 0 : 1,
+      warningCount: hasSalesDiscrepancy ? 1 : 0,
+      criticalCount: 0,
       items,
     };
 
@@ -2265,7 +1467,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return report;
   };
 
-  // Export database to JSON string
   const exportDatabaseJson = (): string => {
     const data = {
       version: '1.0',
@@ -2290,13 +1491,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       bankAccounts,
       bankDeposits,
       internalTransfers,
-      cashOnHand,
       trashItems,
     };
     return JSON.stringify(data, null, 2);
   };
 
-  // Import database from JSON string
   const importDatabaseJson = (jsonString: string): boolean => {
     try {
       const data = JSON.parse(jsonString);
@@ -2304,23 +1503,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (Array.isArray(data.farms)) setFarms(data.farms);
       if (Array.isArray(data.houses)) setHouses(data.houses);
       if (Array.isArray(data.flocks)) setFlocks(data.flocks);
-      if (Array.isArray(data.flockAdjustments)) setFlockAdjustments(data.flockAdjustments);
-      if (Array.isArray(data.eggProductionLogs)) setEggProductionLogs(data.eggProductionLogs);
-      if (Array.isArray(data.eggAdjustments)) setEggAdjustments(data.eggAdjustments);
-      if (Array.isArray(data.feedItems)) setFeedItems(data.feedItems);
-      if (Array.isArray(data.feedConsumptionLogs)) setFeedConsumptionLogs(data.feedConsumptionLogs);
-      if (Array.isArray(data.feedPurchaseLogs)) setFeedPurchaseLogs(data.feedPurchaseLogs);
-      if (Array.isArray(data.supplyItems)) setSupplyItems(data.supplyItems);
-      if (Array.isArray(data.supplyUsageLogs)) setSupplyUsageLogs(data.supplyUsageLogs);
-      if (Array.isArray(data.customers)) setCustomers(data.customers);
-      if (Array.isArray(data.orders)) setOrders(data.orders);
       if (Array.isArray(data.sales)) setSales(data.sales);
-      if (Array.isArray(data.payments)) setPayments(data.payments);
       if (Array.isArray(data.expenses)) setExpenses(data.expenses);
-      if (Array.isArray(data.bankAccounts)) setBankAccounts(data.bankAccounts);
-      if (Array.isArray(data.bankDeposits)) setBankDeposits(data.bankDeposits);
-      if (Array.isArray(data.internalTransfers)) setInternalTransfers(data.internalTransfers);
-      if (Array.isArray(data.trashItems)) setTrashItems(data.trashItems);
       return true;
     } catch (err) {
       console.error('Import failed:', err);
@@ -2328,7 +1512,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
-  // Reset to absolute clean zero data
   const resetToZeroData = () => {
     setProfile(DEFAULT_FARM_PROFILE);
     setFarms([]);
@@ -2353,15 +1536,44 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setTrashItems([]);
     setAuditReport(null);
 
-    // Clear local storage keys
-    Object.keys(localStorage).forEach(k => {
-      if (k.startsWith(STORAGE_KEY_PREFIX)) {
-        localStorage.removeItem(k);
-      }
-    });
+    if (typeof window !== 'undefined') {
+      Object.keys(localStorage).forEach(k => {
+        if (k.startsWith(STORAGE_KEY_PREFIX)) {
+          localStorage.removeItem(k);
+        }
+      });
+    }
   };
 
-  // Market Pricing & Price Change Logger
+  const signInWithGoogle = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err) {
+      console.error('Google Sign-In failed:', err);
+    }
+  };
+
+  const signOutUser = async () => {
+    try {
+      await signOut(auth);
+    } catch (err) {
+      console.error('Sign-Out failed:', err);
+    }
+  };
+
+  const syncAllLocalDataToCloud = async () => {
+    try {
+      await batchUploadCollection('farms', farms);
+      await batchUploadCollection('houses', houses);
+      await batchUploadCollection('flocks', flocks);
+      await batchUploadCollection('sales', sales);
+      await batchUploadCollection('expenses', expenses);
+      setLastSyncedAt(new Date());
+    } catch (err) {
+      console.error('Cloud Sync failed:', err);
+    }
+  };
+
   const updateEggGradePrice = (
     grade: EggGradeKey,
     newTrayPrice: number,
@@ -2389,11 +1601,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       changedBy: activeRoleConfig.title,
     };
 
-    setPriceChangeLogs(prev => {
-      const updated = [newLog, ...prev];
-      saveStorage('price_change_logs_v2', updated);
-      return updated;
-    });
+    setPriceChangeLogs(prev => [newLog, ...prev]);
+    saveStorage('price_change_logs_v2', [newLog, ...priceChangeLogs]);
 
     setEggGradePrices(prev => {
       const updated = {
@@ -2405,15 +1614,9 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     syncSaveDoc('price_change_logs', newLog.id, newLog);
-
-    logActivity(
-      'SETTINGS_CHANGED',
-      'Market Pricing',
-      `Admin updated selling price for ${grade.toUpperCase()} from ₱${oldTrayPrice} to ₱${newTrayPrice} per tray (${reason?.trim() || 'Market price adjustment'})`
-    );
+    logActivity('SETTINGS_CHANGED', 'Market Pricing', `Admin updated selling price for ${grade.toUpperCase()} from ₱${oldTrayPrice} to ₱${newTrayPrice} per tray`);
   };
 
-  // Universal Login Session Methods
   const loginSession = (
     role: UserRole,
     passwordOrPin: string
@@ -2495,7 +1698,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         return { success: true, message: `Role switched to ${target}` };
       }
     }
-    return { success: false, message: 'Invalid Admin Password! Switch / Logout authorization failed.' };
+    return { success: false, message: 'Invalid Admin Password!' };
   };
 
   const changeUserPassword = (
@@ -2509,7 +1712,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const workingPass = roleCredentials[roleKey] || DEFAULT_ROLE_CREDENTIALS[roleKey];
     const adminPass = roleCredentials.admin || ADMIN_CREDENTIALS.password;
 
-    // Requirement 2: User MUST provide current working PIN first before saving a new one
     if (trimmedCurrent !== workingPass && trimmedCurrent !== adminPass) {
       return { success: false, message: 'Current Working PIN/Password is incorrect!' };
     }
@@ -2518,10 +1720,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return { success: false, message: 'New PIN/Password must be at least 3 characters long.' };
     }
 
-    const updated = {
-      ...roleCredentials,
-      [roleKey]: trimmedNew,
-    };
+    const updated = { ...roleCredentials, [roleKey]: trimmedNew };
     setRoleCredentials(updated);
     saveStorage('custom_passwords_v2', updated);
     return { success: true, message: `PIN for ${roleKey.toUpperCase()} updated successfully!` };
@@ -2531,7 +1730,6 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     targetRole: UserRole,
     newPassword: string
   ): { success: boolean; message: string } => {
-    // Requirement 3: Only Owner / Admin can reset passwords for Staff & Manager without knowing current PIN
     if (currentRole !== 'admin' && currentRole !== 'owner' && !isAdminAuthenticated) {
       return { success: false, message: 'Only Superuser Admin/Owner can reset role PINs!' };
     }
@@ -2542,17 +1740,12 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
 
     const roleKey = (targetRole === 'owner' ? 'admin' : (targetRole === 'collector' || targetRole === 'sales_clerk' || targetRole === 'auditor') ? 'staff' : targetRole) as 'admin' | 'manager' | 'staff';
-
-    const updated = {
-      ...roleCredentials,
-      [roleKey]: trimmedNew,
-    };
+    const updated = { ...roleCredentials, [roleKey]: trimmedNew };
     setRoleCredentials(updated);
     saveStorage('custom_passwords_v2', updated);
-    return { success: true, message: `Superuser reset PIN for ${roleKey.toUpperCase()} saved persistently!` };
+    return { success: true, message: `Superuser reset PIN for ${roleKey.toUpperCase()} saved!` };
   };
 
-  // Role-Based Access Control (RBAC) Methods & Helpers
   const loginAsAdmin = (password: string): { success: boolean; message: string } => {
     const trimmed = password.trim();
     const adminPass = roleCredentials.admin || ADMIN_CREDENTIALS.password;
@@ -2577,16 +1770,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const setRole = (role: UserRole) => {
     const targetRole: UserRole = role === 'owner' ? 'admin' : (role === 'collector' || role === 'sales_clerk' || role === 'auditor') ? 'staff' : role;
     if (targetRole === currentRole) return;
-
-    // Hard Lock: Intercept ANY attempt to switch user or role with Admin password authorization
     requestLogoutOrSwitch(targetRole);
   };
 
   const updateRoleConfig = (role: UserRole, updatedConfig: RoleConfig) => {
-    const updated = {
-      ...roleConfigs,
-      [role]: updatedConfig,
-    };
+    const updated = { ...roleConfigs, [role]: updatedConfig };
     setRoleConfigs(updated);
     saveStorage('custom_role_configs_v2', updated);
   };
@@ -2600,68 +1788,19 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return roleConfigs[currentRole] || USER_ROLES[currentRole] || USER_ROLES.admin;
   }, [currentRole, roleConfigs]);
 
-  const isTabAllowed = (tabId: string): boolean => {
-    if (tabId === 'access-control') {
-      return currentRole === 'admin' || !!activeRoleConfig.permissions?.canManageAccessControl;
-    }
-    return activeRoleConfig.allowedTabs ? activeRoleConfig.allowedTabs.includes(tabId) : true;
-  };
+   const isTabAllowed = (tabId: string): boolean => {
+      // FORCE WHITELIST: Siguraduhing laging lalabas ang activity log tab kahit anong role ang naka-login
+      if (tabId === 'activity-log' || tabId === 'activity-logs' || tabId === 'audit') return true;
+      if (tabId === 'access-control') {
+        return currentRole === 'admin' || !!activeRoleConfig.permissions?.canManageAccessControl;
+      }
+      return activeRoleConfig.allowedTabs ? activeRoleConfig.allowedTabs.includes(tabId) : true;
+    };
 
   const hasPermission = (perm: keyof RolePermissions): boolean => {
     return !!activeRoleConfig.permissions?.[perm];
   };
 
-  const addTeamMember = (memberData: Omit<TeamMember, 'id' | 'assignedAt'>): TeamMember => {
-    const newMember: TeamMember = {
-      ...memberData,
-      id: 'member-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-      assignedAt: new Date().toISOString(),
-    };
-    const updated = [...teamMembers, newMember];
-    setTeamMembers(updated);
-    saveStorage('team_members', updated);
-    syncSaveDoc('team_members', newMember.id, newMember);
-    return newMember;
-  };
-
-  const updateTeamMember = (id: string, updates: Partial<TeamMember>) => {
-    const updated = teamMembers.map(m => (m.id === id ? { ...m, ...updates } : m));
-    setTeamMembers(updated);
-    saveStorage('team_members', updated);
-    const target = updated.find(m => m.id === id);
-    if (target) {
-      syncUpdateDoc('team_members', id, target);
-    }
-  };
-
-  const deleteTeamMember = (id: string) => {
-    const updated = teamMembers.filter(m => m.id !== id);
-    setTeamMembers(updated);
-    saveStorage('team_members', updated);
-    syncDeleteDoc('team_members', id);
-  };
-
-  // Requirement 1: Feed Consumption Analytics & Cumulative Metrics
-  const totalFeedKgConsumedAllTime = useMemo(() => {
-    return feedConsumptionLogs.reduce((sum, log) => sum + (log.kgUsed || log.bagsUsed * 50), 0);
-  }, [feedConsumptionLogs]);
-
-  const totalFeedBagsConsumedAllTime = useMemo(() => {
-    return feedConsumptionLogs.reduce((sum, log) => sum + (log.bagsUsed || 0), 0);
-  }, [feedConsumptionLogs]);
-
-  const feedConsumptionRatio = useMemo(() => {
-    if (!totalGoodEggsCollected || totalGoodEggsCollected <= 0) return 0;
-    return Number((totalFeedKgConsumedAllTime / totalGoodEggsCollected).toFixed(3));
-  }, [totalFeedKgConsumedAllTime, totalGoodEggsCollected]);
-
-  const fcrPerTray = useMemo(() => {
-    const totalTrays = totalGoodEggsCollected / 30;
-    if (!totalTrays || totalTrays <= 0) return 0;
-    return Number((totalFeedKgConsumedAllTime / totalTrays).toFixed(2));
-  }, [totalFeedKgConsumedAllTime, totalGoodEggsCollected]);
-
-  // Requirement 5: Daily Task Planner Board Widget Handlers
   const addDailyTask = (
     title: string,
     priority: DailyTask['priority'] = 'medium',
@@ -2682,7 +1821,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       return updated;
     });
     syncSaveDoc('daily_tasks', newTask.id, newTask);
-    logActivity('CREATED', 'Daily Instructions', `Created daily instruction task: "${title.trim()}" assigned to ${assignedTo}`);
+    logActivity('CREATED', 'Daily Instructions', `Created task: "${title.trim()}" for ${assignedTo}`);
   };
 
   const toggleDailyTask = (id: string) => {
@@ -2702,42 +1841,33 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     syncDeleteDoc('daily_tasks', id);
   };
 
-  // Auto-Sorting Logistics (Most Recent Entries Always on Top)
-  const sortedSales = useMemo(() => {
-    return [...sales].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
-  }, [sales]);
+  const addTeamMember = (memberData: Omit<TeamMember, 'id' | 'assignedAt'>): TeamMember => {
+    const newMember: TeamMember = {
+      ...memberData,
+      id: 'member-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+      assignedAt: new Date().toISOString(),
+    };
+    const updated = [...teamMembers, newMember];
+    setTeamMembers(updated);
+    saveStorage('team_members', updated);
+    syncSaveDoc('team_members', newMember.id, newMember);
+    return newMember;
+  };
 
-  const sortedExpenses = useMemo(() => {
-    return [...expenses].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
-  }, [expenses]);
+  const updateTeamMember = (id: string, updates: Partial<TeamMember>) => {
+    const updated = teamMembers.map(m => (m.id === id ? { ...m, ...updates } : m));
+    setTeamMembers(updated);
+    saveStorage('team_members', updated);
+    const target = updated.find(m => m.id === id);
+    if (target) syncUpdateDoc('team_members', id, target);
+  };
 
-  const sortedEggProductionLogs = useMemo(() => {
-    return [...eggProductionLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
-  }, [eggProductionLogs]);
-
-  const sortedPayments = useMemo(() => {
-    return [...payments].sort((a, b) => (b.paymentDate || b.createdAt || '').localeCompare(a.paymentDate || a.createdAt || ''));
-  }, [payments]);
-
-  const sortedFeedConsumptionLogs = useMemo(() => {
-    return [...feedConsumptionLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
-  }, [feedConsumptionLogs]);
-
-  const sortedSupplyUsageLogs = useMemo(() => {
-    return [...supplyUsageLogs].sort((a, b) => (b.date || b.createdAt || '').localeCompare(a.date || a.createdAt || ''));
-  }, [supplyUsageLogs]);
-
-  const sortedActivityLogs = useMemo(() => {
-    return [...activityLogs].sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
-  }, [activityLogs]);
-
-  const sortedPriceChangeLogs = useMemo(() => {
-    return [...priceChangeLogs].sort((a, b) => (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || ''));
-  }, [priceChangeLogs]);
-
-  const sortedBankDeposits = useMemo(() => {
-    return [...bankDeposits].sort((a, b) => (b.depositDate || b.createdAt || '').localeCompare(a.depositDate || a.createdAt || ''));
-  }, [bankDeposits]);
+  const deleteTeamMember = (id: string) => {
+    const updated = teamMembers.filter(m => m.id !== id);
+    setTeamMembers(updated);
+    saveStorage('team_members', updated);
+    syncDeleteDoc('team_members', id);
+  };
 
   return (
     <FarmContext.Provider
@@ -2882,6 +2012,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         totalFeedBagsConsumedAllTime,
         feedConsumptionRatio,
         fcrPerTray,
+        flockPerformanceMetrics,
         dailyTasks,
         addDailyTask,
         toggleDailyTask,
@@ -2893,9 +2024,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       {children}
     </FarmContext.Provider>
   );
-
-
-
+};
 
 export const useFarm = () => {
   const context = useContext(FarmContext);
