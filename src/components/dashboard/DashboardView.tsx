@@ -49,7 +49,7 @@ interface DashboardViewProps {
   onNavigate: (tab: string) => void;
 }
 
-type CollectionPeriod = 'daily' | 'weekly' | 'monthly';
+type TimeFrameView = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 type CollectionUnit = 'pieces' | 'trays';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
@@ -89,7 +89,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     currentRole,
   } = useFarm();
 
-  const [collectionPeriod, setCollectionPeriod] = useState<CollectionPeriod>('daily');
+  // Requirement 1: Component View State & Toggle Buttons
+  const [timeFrame, setTimeFrame] = useState<TimeFrameView>('DAILY');
   const [collectionUnit, setCollectionUnit] = useState<CollectionUnit>('pieces');
 
   // Daily Task Planner Input State
@@ -213,18 +214,64 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     });
   }
 
-  // --- EGG COLLECTION TREND LINE GRAPH DATA BUCKETS ---
-  const collectionBuckets = useMemo(() => {
-    const buckets: { key: string; label: string; dateStart: string; dateEnd: string }[] = [];
+  // Requirement 2: ADVANCED MULTI-TIMEFRAME DATA AGGREGATION LOGIC (useMemo)
+  const collectionLineChartData = useMemo(() => {
+    const isTray = collectionUnit === 'trays';
+    const factor = isTray ? 30 : 1;
     const today = new Date();
 
-    if (collectionPeriod === 'monthly') {
+    if (timeFrame === 'YEARLY') {
+      // Group all historic poultry logs by year segments (YYYY)
+      const yearMap: Record<string, {
+        total: number; usable: number; rejects: number;
+        small: number; medium: number; large: number; xl: number; jumbo: number;
+      }> = {};
+
+      eggProductionLogs.forEach(log => {
+        const yyyy = log.date ? log.date.split('-')[0] : '2026';
+        if (!yearMap[yyyy]) {
+          yearMap[yyyy] = { total: 0, usable: 0, rejects: 0, small: 0, medium: 0, large: 0, xl: 0, jumbo: 0 };
+        }
+        yearMap[yyyy].total += log.totalCollection || 0;
+        yearMap[yyyy].usable += log.usableEggs || 0;
+        yearMap[yyyy].rejects += log.rejects != null ? log.rejects : (log.brokenEggs || 0) + (log.dirtyEggs || 0);
+        yearMap[yyyy].small += log.grades?.small || 0;
+        yearMap[yyyy].medium += log.grades?.medium || 0;
+        yearMap[yyyy].large += log.grades?.large || 0;
+        yearMap[yyyy].xl += log.grades?.xl || 0;
+        yearMap[yyyy].jumbo += log.grades?.jumbo || 0;
+      });
+
+      const sortedYears = Object.keys(yearMap).sort();
+      if (sortedYears.length === 0) {
+        sortedYears.push(new Date().getFullYear().toString());
+      }
+
+      return sortedYears.map(yyyy => {
+        const d = yearMap[yyyy] || { total: 0, usable: 0, rejects: 0, small: 0, medium: 0, large: 0, xl: 0, jumbo: 0 };
+        return {
+          label: yyyy,
+          totalCollection: Number((d.total / factor).toFixed(1)),
+          usableEggs: Number((d.usable / factor).toFixed(1)),
+          rejects: Number((d.rejects / factor).toFixed(1)),
+          small: Number((d.small / factor).toFixed(1)),
+          medium: Number((d.medium / factor).toFixed(1)),
+          large: Number((d.large / factor).toFixed(1)),
+          xl: Number((d.xl / factor).toFixed(1)),
+          jumbo: Number((d.jumbo / factor).toFixed(1)),
+        };
+      });
+    }
+
+    if (timeFrame === 'MONTHLY') {
+      // Group records by year-month (YYYY-MM) mapped to readable short months (e.g., 'Jan 2026', 'Feb 2026')
+      const buckets: { key: string; label: string; dateStart: string; dateEnd: string }[] = [];
       for (let i = 5; i >= 0; i--) {
         const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const monthKey = `${yyyy}-${mm}`;
-        const label = d.toLocaleDateString('en-PH', { month: 'short', year: '2-digit' });
+        const label = d.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
         const lastDay = new Date(yyyy, d.getMonth() + 1, 0).getDate();
         buckets.push({
           key: monthKey,
@@ -233,7 +280,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           dateEnd: `${monthKey}-${String(lastDay).padStart(2, '0')}`,
         });
       }
-    } else if (collectionPeriod === 'weekly') {
+
+      return buckets.map(bucket => {
+        const logs = eggProductionLogs.filter(
+          l => l.date >= bucket.dateStart && l.date <= bucket.dateEnd
+        );
+        const rawTotal = logs.reduce((sum, l) => sum + l.totalCollection, 0);
+        const rawUsable = logs.reduce((sum, l) => sum + l.usableEggs, 0);
+        const rawRejects = logs.reduce((sum, l) => sum + (l.rejects != null ? l.rejects : (l.brokenEggs || 0) + (l.dirtyEggs || 0)), 0);
+        const rawSmall = logs.reduce((sum, l) => sum + (l.grades?.small || 0), 0);
+        const rawMedium = logs.reduce((sum, l) => sum + (l.grades?.medium || 0), 0);
+        const rawLarge = logs.reduce((sum, l) => sum + (l.grades?.large || 0), 0);
+        const rawXl = logs.reduce((sum, l) => sum + (l.grades?.xl || 0), 0);
+        const rawJumbo = logs.reduce((sum, l) => sum + (l.grades?.jumbo || 0), 0);
+
+        return {
+          label: bucket.label,
+          totalCollection: Number((rawTotal / factor).toFixed(1)),
+          usableEggs: Number((rawUsable / factor).toFixed(1)),
+          rejects: Number((rawRejects / factor).toFixed(1)),
+          small: Number((rawSmall / factor).toFixed(1)),
+          medium: Number((rawMedium / factor).toFixed(1)),
+          large: Number((rawLarge / factor).toFixed(1)),
+          xl: Number((rawXl / factor).toFixed(1)),
+          jumbo: Number((rawJumbo / factor).toFixed(1)),
+        };
+      });
+    }
+
+    if (timeFrame === 'WEEKLY') {
+      // Group and sum by week numbers or week-ending dates (e.g., 'W1 (Sep 14)', 'W2 (Sep 21)')
+      const buckets: { key: string; label: string; dateStart: string; dateEnd: string }[] = [];
       for (let i = 3; i >= 0; i--) {
         const endD = new Date(today);
         endD.setDate(today.getDate() - i * 7);
@@ -250,44 +327,58 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           dateEnd: formatDate(endD),
         });
       }
-    } else {
-      // Daily (14 days)
-      for (let i = 13; i >= 0; i--) {
-        const d = new Date();
-        d.setDate(today.getDate() - i);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        const dd = String(d.getDate()).padStart(2, '0');
-        const dateKey = `${yyyy}-${mm}-${dd}`;
-        buckets.push({
-          key: dateKey,
-          label: d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
-          dateStart: dateKey,
-          dateEnd: dateKey,
-        });
-      }
+
+      return buckets.map(bucket => {
+        const logs = eggProductionLogs.filter(
+          l => l.date >= bucket.dateStart && l.date <= bucket.dateEnd
+        );
+        const rawTotal = logs.reduce((sum, l) => sum + l.totalCollection, 0);
+        const rawUsable = logs.reduce((sum, l) => sum + l.usableEggs, 0);
+        const rawRejects = logs.reduce((sum, l) => sum + (l.rejects != null ? l.rejects : (l.brokenEggs || 0) + (l.dirtyEggs || 0)), 0);
+        const rawSmall = logs.reduce((sum, l) => sum + (l.grades?.small || 0), 0);
+        const rawMedium = logs.reduce((sum, l) => sum + (l.grades?.medium || 0), 0);
+        const rawLarge = logs.reduce((sum, l) => sum + (l.grades?.large || 0), 0);
+        const rawXl = logs.reduce((sum, l) => sum + (l.grades?.xl || 0), 0);
+        const rawJumbo = logs.reduce((sum, l) => sum + (l.grades?.jumbo || 0), 0);
+
+        return {
+          label: bucket.label,
+          totalCollection: Number((rawTotal / factor).toFixed(1)),
+          usableEggs: Number((rawUsable / factor).toFixed(1)),
+          rejects: Number((rawRejects / factor).toFixed(1)),
+          small: Number((rawSmall / factor).toFixed(1)),
+          medium: Number((rawMedium / factor).toFixed(1)),
+          large: Number((rawLarge / factor).toFixed(1)),
+          xl: Number((rawXl / factor).toFixed(1)),
+          jumbo: Number((rawJumbo / factor).toFixed(1)),
+        };
+      });
     }
 
-    return buckets;
-  }, [collectionPeriod]);
+    // DAILY (Default): Last 14 days chronologically formatted as 'Sep 14', 'Sep 15'
+    const buckets: { key: string; label: string; dateStart: string; dateEnd: string }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(today.getDate() - i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      const dateKey = `${yyyy}-${mm}-${dd}`;
+      buckets.push({
+        key: dateKey,
+        label: d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' }),
+        dateStart: dateKey,
+        dateEnd: dateKey,
+      });
+    }
 
-  const collectionLineChartData = useMemo(() => {
-    const isTray = collectionUnit === 'trays';
-    const factor = isTray ? 30 : 1;
-
-    return collectionBuckets.map(bucket => {
+    return buckets.map(bucket => {
       const logs = eggProductionLogs.filter(
         l => l.date >= bucket.dateStart && l.date <= bucket.dateEnd
       );
-
       const rawTotal = logs.reduce((sum, l) => sum + l.totalCollection, 0);
       const rawUsable = logs.reduce((sum, l) => sum + l.usableEggs, 0);
-      const rawRejects = logs.reduce(
-        (sum, l) =>
-          sum + (l.rejects != null ? l.rejects : (l.brokenEggs || 0) + (l.dirtyEggs || 0)),
-        0
-      );
-
+      const rawRejects = logs.reduce((sum, l) => sum + (l.rejects != null ? l.rejects : (l.brokenEggs || 0) + (l.dirtyEggs || 0)), 0);
       const rawSmall = logs.reduce((sum, l) => sum + (l.grades?.small || 0), 0);
       const rawMedium = logs.reduce((sum, l) => sum + (l.grades?.medium || 0), 0);
       const rawLarge = logs.reduce((sum, l) => sum + (l.grades?.large || 0), 0);
@@ -306,7 +397,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         jumbo: Number((rawJumbo / factor).toFixed(1)),
       };
     });
-  }, [collectionBuckets, eggProductionLogs, collectionUnit]);
+  }, [timeFrame, collectionUnit, eggProductionLogs]);
 
   // Peak Harvest Point
   const peakHarvestPoint = useMemo(() => {
@@ -531,7 +622,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* REQUIREMENT 5: DAILY TASK PLANNER BOARD WIDGET */}
+      {/* DAILY TASK PLANNER BOARD WIDGET */}
       <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white rounded-2xl p-5 border border-slate-800 shadow-xl space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2.5">
@@ -608,7 +699,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           )}
         </div>
 
-        {/* Create Task Form (Admin & Manager) */}
+        {/* Create Task Form */}
         {isManagement && (
           <form onSubmit={handleCreateTask} className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs items-center">
             <input
@@ -641,7 +732,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         )}
       </div>
 
-      {/* REQUIREMENT 1: FEED CONSUMPTION ANALYTICS & CUMULATIVE CARDS */}
+      {/* FEED CONSUMPTION ANALYTICS & CUMULATIVE CARDS */}
       {hasPermission('viewInventoryMetrics') && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -735,7 +826,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             )}
           </div>
 
-          {/* Prominent Yellow/Amber Discrepancy Warning Label if Sales > Production */}
+          {/* Discrepancy Warning Label */}
           {hasSalesDiscrepancy && (
             <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-xl flex items-center gap-3 text-amber-950 text-xs font-bold shadow-xs animate-in fade-in">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
@@ -787,7 +878,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* 3. Inventory Remaining (Calculation Card) */}
+            {/* 3. Inventory Remaining */}
             <div className={`p-3.5 rounded-xl border space-y-1 ${
               inventoryRemaining < 0
                 ? 'bg-rose-50 border-rose-200'
@@ -835,7 +926,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
         </div>
       )}
 
-      {/* DYNAMIC EGG COLLECTION TREND LINE GRAPH MODULE */}
+      {/* REQUIREMENT 1, 2, 3: DYNAMIC EGG COLLECTION TREND LINE GRAPH MODULE */}
       {hasPermission('viewFlockMetrics') && (
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-3">
@@ -851,7 +942,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </p>
             </div>
 
-            {/* View Toggles: Period & Unit */}
+            {/* View Toggles: Period (DAILY, WEEKLY, MONTHLY, YEARLY) & Unit */}
             <div className="flex flex-wrap items-center gap-2">
               {/* Unit Toggle: Pieces vs Trays */}
               <div className="inline-flex bg-slate-100 p-1 rounded-xl text-xs font-semibold border border-slate-200">
@@ -877,34 +968,34 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 </button>
               </div>
 
-              {/* Period Toggle: Daily, Weekly, Monthly */}
+              {/* Requirement 1: TimeFrame Button Group Toggle (DAILY, WEEKLY, MONTHLY, YEARLY) */}
               <div className="inline-flex bg-slate-100 p-1 rounded-xl text-xs font-semibold border border-slate-200">
-                {(['daily', 'weekly', 'monthly'] as CollectionPeriod[]).map(p => (
+                {(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'] as TimeFrameView[]).map(tf => (
                   <button
-                    key={p}
-                    onClick={() => setCollectionPeriod(p)}
+                    key={tf}
+                    onClick={() => setTimeFrame(tf)}
                     className={`px-2.5 py-1 rounded-lg transition-colors cursor-pointer uppercase text-[11px] ${
-                      collectionPeriod === p
+                      timeFrame === tf
                         ? 'bg-white text-slate-900 font-bold shadow-xs'
                         : 'text-slate-600 hover:text-slate-900'
                     }`}
                   >
-                    {p}
+                    {tf}
                   </button>
                 ))}
               </div>
             </div>
           </div>
 
-          {/* Peak Harvest Summary Badge */}
+          {/* Requirement 1 & 2: Peak Harvest Summary Badge dynamically matching active timeFrame */}
           {peakHarvestPoint && (
             <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span className="text-slate-700 font-medium">
-                  Peak Harvest for {collectionPeriod.toUpperCase()} view:{' '}
+                  Peak Harvest for {timeFrame === 'DAILY' ? 'DAILY view' : timeFrame === 'WEEKLY' ? 'WEEKLY view' : timeFrame === 'MONTHLY' ? 'MONTHLY view' : 'HISTORIC view'}:{' '}
                   <strong className="text-emerald-900 font-bold">
-                    {formatNumber(peakHarvestPoint.totalCollection)} {collectionUnit} ({peakHarvestPoint.label})
+                    {formatNumber(peakHarvestPoint.totalCollection)} {collectionUnit === 'trays' ? 'trays' : 'pieces'} ({peakHarvestPoint.label})
                   </strong>
                 </span>
               </div>
@@ -914,7 +1005,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             </div>
           )}
 
-          {/* Recharts Line Graph Component */}
+          {/* Recharts Line Graph Component with Dynamic Color Mappings */}
           <div className="h-72 w-full pt-2">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={collectionLineChartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
