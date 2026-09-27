@@ -1230,9 +1230,20 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const deleteSupplyUsageLog = (id: string) => {
+    const target = supplyUsageLogs.find(s => s.id === id);
+    if (target) {
+      moveToTrash(
+        'supply_usage',
+        id,
+        `Supply Application: ${target.supplyName} (${target.quantity} ${target.unit})`,
+        `Reason: ${target.reason || 'Routine application'}`,
+        target.date,
+        target
+      );
+      logActivity('DELETED', 'Supplies & Pest Control', `Purged supply usage entry for ID: ${id}`);
+    }
     setSupplyUsageLogs(prev => prev.filter(s => s.id !== id));
     syncDeleteDoc('supply_usage_logs', id);
-    logActivity('DELETED', 'Supplies & Pest Control', `Deleted supply usage log ${id}`);
   };
 
   const recordSupplyUsage = (log: Omit<SupplyUsageLog, 'id' | 'createdAt'>) => {
@@ -1525,9 +1536,32 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const deleteBankDeposit = (id: string) => {
     const target = bankDeposits.find(d => d.id === id);
+    if (target) {
+      // Financial Reversion: Revert target bank account balance smoothly
+      setBankAccounts(prev =>
+        prev.map(b => {
+          if (b.id === target.bankAccountId) {
+            const nextBal = Math.max(0, b.currentBalance - target.amount);
+            syncUpdateDoc('bank_accounts', b.id, { currentBalance: nextBal });
+            return { ...b, currentBalance: nextBal };
+          }
+          return b;
+        })
+      );
+
+      moveToTrash(
+        'bank_deposit',
+        id,
+        `Bank Deposit: ${target.depositNumber} (${target.bankName})`,
+        `Amount: ₱${target.amount.toLocaleString()} • Source: ${target.sourceAccount}`,
+        target.depositDate,
+        target
+      );
+
+      logActivity('DELETED', 'Bank Deposits', `Purged bank deposit log entry for ID: ${id}`);
+    }
     setBankDeposits(prev => prev.filter(d => d.id !== id));
     syncDeleteDoc('bank_deposits', id);
-    if (target) logActivity('DELETED', 'Bank Deposits', `Deleted bank deposit: ${target.depositNumber}`);
   };
 
   const setCashOnHandManualAdjustment = (newAmount: number, reason: string) => {

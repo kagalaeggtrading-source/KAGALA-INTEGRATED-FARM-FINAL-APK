@@ -13,9 +13,10 @@ import {
   History,
   Trash2,
   Package,
+  Edit2,
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '../../constants';
-import { SupplyCategory, SupplyItem } from '../../types';
+import { SupplyCategory, SupplyItem, SupplyUsageLog } from '../../types';
 
 export const SuppliesView: React.FC = () => {
   const {
@@ -24,6 +25,8 @@ export const SuppliesView: React.FC = () => {
     deleteSupplyItem,
     supplyUsageLogs,
     recordSupplyUsage,
+    updateSupplyUsageLog,
+    deleteSupplyUsageLog,
     houses,
     flocks,
   } = useFarm();
@@ -31,6 +34,7 @@ export const SuppliesView: React.FC = () => {
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showUsageModal, setShowUsageModal] = useState(false);
+  const [editingUsageLog, setEditingUsageLog] = useState<SupplyUsageLog | null>(null);
 
   // Add Item State
   const [name, setName] = useState('');
@@ -99,20 +103,55 @@ export const SuppliesView: React.FC = () => {
     const item = supplyItems.find(s => s.id === usageItemId) || supplyItems[0];
     if (!item) return;
 
-    recordSupplyUsage({
-      date: usageDate,
-      supplyItemId: item.id,
-      supplyName: item.name,
-      quantity: Number(usageQty),
-      unit: item.unit,
-      reason: usageReason.trim(),
-      houseId: usageHouseId || undefined,
-      flockId: usageFlockId || undefined,
-    });
+    if (editingUsageLog) {
+      updateSupplyUsageLog(editingUsageLog.id, {
+        date: usageDate,
+        supplyItemId: item.id,
+        supplyName: item.name,
+        quantity: Number(usageQty),
+        unit: item.unit,
+        reason: usageReason.trim(),
+        houseId: usageHouseId || undefined,
+        flockId: usageFlockId || undefined,
+      });
+      setEditingUsageLog(null);
+    } else {
+      recordSupplyUsage({
+        date: usageDate,
+        supplyItemId: item.id,
+        supplyName: item.name,
+        quantity: Number(usageQty),
+        unit: item.unit,
+        reason: usageReason.trim(),
+        houseId: usageHouseId || undefined,
+        flockId: usageFlockId || undefined,
+      });
+    }
 
     setShowUsageModal(false);
     setUsageQty(1);
     setUsageReason('');
+  };
+
+  const handleEditUsageLog = (log: SupplyUsageLog) => {
+    setEditingUsageLog(log);
+    setUsageItemId(log.supplyItemId);
+    setUsageQty(log.quantity);
+    setUsageReason(log.reason || '');
+    setUsageDate(log.date);
+    setUsageHouseId(log.houseId || '');
+    setUsageFlockId(log.flockId || '');
+    setShowUsageModal(true);
+  };
+
+  const handleDeleteUsageLog = (logId: string) => {
+    if (
+      confirm(
+        'Are you sure you want to delete this supply application record? This action will move the record to the trash.'
+      )
+    ) {
+      deleteSupplyUsageLog(logId);
+    }
   };
 
   return (
@@ -138,7 +177,10 @@ export const SuppliesView: React.FC = () => {
                 alert('Please register a supply item first.');
                 return;
               }
+              setEditingUsageLog(null);
               setUsageItemId(supplyItems[0].id);
+              setUsageQty(1);
+              setUsageReason('Routine Flock Vaccination');
               setShowUsageModal(true);
             }}
             className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold px-3 py-2 rounded-lg transition-colors cursor-pointer shadow-xs"
@@ -162,43 +204,45 @@ export const SuppliesView: React.FC = () => {
           {expiredItems.map(item => (
             <div
               key={item.id}
-              className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg flex items-center justify-between font-medium"
+              className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 font-semibold">
                 <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>
-                  EXPIRED: <strong className="font-bold">{item.name}</strong> expired on{' '}
-                  {item.expirationDate}. Do not administer to flocks!
-                </span>
+                <span>EXPIRED SUPPLY ITEM: {item.name} expired on {item.expirationDate}</span>
               </div>
+              <span className="text-[10px] bg-rose-200 text-rose-900 font-bold px-2 py-0.5 rounded">
+                DISPOSE IMMEDIATELY
+              </span>
             </div>
           ))}
 
           {expiringSoonItems.map(item => (
             <div
               key={item.id}
-              className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg flex items-center justify-between font-medium"
+              className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 font-medium">
                 <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  EXPIRING SOON: <strong>{item.name}</strong> expires on {item.expirationDate}. Plan usage accordingly.
-                </span>
+                <span>EXPIRING SOON: {item.name} expires on {item.expirationDate} (within 30 days)</span>
               </div>
+              <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded">
+                PRIORITIZE USE
+              </span>
             </div>
           ))}
 
           {lowStockItems.map(item => (
             <div
               key={item.id}
-              className="p-3 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded-lg flex items-center justify-between font-medium"
+              className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center justify-between"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 font-medium">
                 <Package className="w-4 h-4 text-amber-600 shrink-0" />
-                <span>
-                  LOW STOCK: <strong>{item.name}</strong> has only {item.quantity} {item.unit} remaining (Minimum threshold: {item.minimumStock}).
-                </span>
+                <span>LOW STOCK ALERT: {item.name} has only {item.quantity} {item.unit} left (Min threshold: {item.minimumStock})</span>
               </div>
+              <span className="text-[10px] bg-amber-200 text-amber-900 font-bold px-2 py-0.5 rounded">
+                RESTOCK REQUIRED
+              </span>
             </div>
           ))}
         </div>
@@ -299,8 +343,8 @@ export const SuppliesView: React.FC = () => {
                               deleteSupplyItem(item.id);
                             }
                           }}
-                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition-colors"
-                          title="Delete Item"
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                          title="Delete Supply Item"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -340,7 +384,7 @@ export const SuppliesView: React.FC = () => {
                   <th className="p-2.5 text-right">Qty Used</th>
                   <th className="p-2.5">Reason / Protocol</th>
                   <th className="p-2.5">Target House/Flock</th>
-                  <th className="p-2.5">Notes</th>
+                  <th className="p-2.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -353,7 +397,24 @@ export const SuppliesView: React.FC = () => {
                     </td>
                     <td className="p-2.5 text-slate-700">{log.reason}</td>
                     <td className="p-2.5 text-slate-500">{log.houseId || 'All Houses'}</td>
-                    <td className="p-2.5 text-slate-400">{log.notes || '—'}</td>
+                    <td className="p-2.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => handleEditUsageLog(log)}
+                          className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                          title="Edit Usage Record"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteUsageLog(log.id)}
+                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                          title="Delete Usage Record"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -433,23 +494,23 @@ export const SuppliesView: React.FC = () => {
                     min="0"
                     value={quantity}
                     onChange={e => setQuantity(parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Cost / Unit (₱)</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Price / Unit (₱)</label>
                   <input
                     type="number"
                     min="0"
                     value={costPerUnit}
                     onChange={e => setCostPerUnit(parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-semibold"
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Min Threshold</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Min Stock Alert</label>
                   <input
                     type="number"
                     min="1"
@@ -462,6 +523,17 @@ export const SuppliesView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Supplier Store</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Vet-Agri Supply Co."
+                    value={supplier}
+                    onChange={e => setSupplier(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  />
+                </div>
+
+                <div>
                   <label className="block font-semibold text-slate-700 mb-1">Expiration Date</label>
                   <input
                     type="date"
@@ -470,26 +542,26 @@ export const SuppliesView: React.FC = () => {
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                   />
                 </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Batch / Lot #</label>
-                  <input
-                    type="text"
-                    placeholder="Lot number"
-                    value={batchLot}
-                    onChange={e => setBatchLot(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
-                  />
-                </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Supplier / Pharmacy</label>
+                <label className="block font-semibold text-slate-700 mb-1">Batch / Lot #</label>
                 <input
                   type="text"
-                  placeholder="Veterinary supply dealer"
-                  value={supplier}
-                  onChange={e => setSupplier(e.target.value)}
+                  placeholder="e.g. LOT-2026-0032"
+                  value={batchLot}
+                  onChange={e => setBatchLot(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Notes / Description</label>
+                <textarea
+                  rows={2}
+                  placeholder="Dosage instructions, dilution ratio..."
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 />
               </div>
@@ -506,7 +578,7 @@ export const SuppliesView: React.FC = () => {
                   type="submit"
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs"
                 >
-                  Save Item
+                  Save Supply Item
                 </button>
               </div>
             </form>
@@ -514,16 +586,19 @@ export const SuppliesView: React.FC = () => {
         </div>
       )}
 
-      {/* MODAL: RECORD USAGE */}
+      {/* MODAL: LOG / EDIT SUPPLY USAGE */}
       {showUsageModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="font-heading font-bold text-base text-slate-900">
-                Log Supply Usage / Administration
+                {editingUsageLog ? 'Edit Supply Application Record' : 'Log Supply Application & Usage'}
               </h3>
               <button
-                onClick={() => setShowUsageModal(false)}
+                onClick={() => {
+                  setShowUsageModal(false);
+                  setEditingUsageLog(null);
+                }}
                 className="text-slate-400 hover:text-slate-600 text-sm font-bold"
               >
                 ✕
@@ -532,7 +607,7 @@ export const SuppliesView: React.FC = () => {
 
             <form onSubmit={handleRecordUsage} className="mt-4 space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Supply Item</label>
+                <label className="block font-semibold text-slate-700 mb-1">Select Supply Item *</label>
                 <select
                   value={usageItemId}
                   onChange={e => setUsageItemId(e.target.value)}
@@ -540,7 +615,7 @@ export const SuppliesView: React.FC = () => {
                 >
                   {supplyItems.map(s => (
                     <option key={s.id} value={s.id}>
-                      {s.name} (Stock: {s.quantity} {s.unit})
+                      {s.name} ({s.quantity} {s.unit} in stock)
                     </option>
                   ))}
                 </select>
@@ -548,7 +623,7 @@ export const SuppliesView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Quantity Used *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Quantity Applied *</label>
                   <input
                     type="number"
                     min="1"
@@ -560,42 +635,79 @@ export const SuppliesView: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Date</label>
+                  <label className="block font-semibold text-slate-700 mb-1">Application Date</label>
                   <input
                     type="date"
                     required
                     value={usageDate}
                     onChange={e => setUsageDate(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Reason / Treatment Protocol</label>
+                <label className="block font-semibold text-slate-700 mb-1">Reason / Treatment Protocol *</label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Newcastle Disease Booster, coop biosecurity misting, tray packaging"
+                  placeholder="e.g. Routine Fly Control Spraying, Deworming Protocol"
                   value={usageReason}
                   onChange={e => setUsageReason(e.target.value)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg"
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Target House (Optional)</label>
+                  <select
+                    value={usageHouseId}
+                    onChange={e => setUsageHouseId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  >
+                    <option value="">All Coop Houses</option>
+                    {houses.map(h => (
+                      <option key={h.id} value={h.id}>
+                        {h.name} ({h.code})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Target Flock (Optional)</label>
+                  <select
+                    value={usageFlockId}
+                    onChange={e => setUsageFlockId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                  >
+                    <option value="">All Active Flocks</option>
+                    {flocks.map(f => (
+                      <option key={f.id} value={f.id}>
+                        {f.batchId} ({f.currentPopulation} birds)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
                 <button
                   type="button"
-                  onClick={() => setShowUsageModal(false)}
+                  onClick={() => {
+                    setShowUsageModal(false);
+                    setEditingUsageLog(null);
+                  }}
                   className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold shadow-xs"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold shadow-xs cursor-pointer"
                 >
-                  Deduct from Stock
+                  {editingUsageLog ? 'Save Changes' : 'Record Application'}
                 </button>
               </div>
             </form>
