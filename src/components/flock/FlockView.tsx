@@ -572,8 +572,9 @@ export const FlockView: React.FC = () => {
                     type="number"
                     required
                     min="1"
+                    step="any"
                     value={startingPopulation}
-                    onChange={e => setStartingPopulation(Math.max(1, parseInt(e.target.value) || 0))}
+                    onChange={e => setStartingPopulation(Math.max(1, parseFloat(e.target.value) || 0))}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
                   />
                 </div>
@@ -595,9 +596,10 @@ export const FlockView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Age at Placement (Weeks)</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.1"
+                    step="any"
                     value={ageWeeks}
-                    onChange={e => setAgeWeeks(parseInt(e.target.value) || 16)}
+                    onChange={e => setAgeWeeks(parseFloat(e.target.value) || 16)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600"
                   />
                 </div>
@@ -736,9 +738,10 @@ export const FlockView: React.FC = () => {
                   <input
                     type="number"
                     min="1"
+                    step="any"
                     required
                     value={adjQuantity}
-                    onChange={e => setAdjQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={e => setAdjQuantity(Math.max(1, parseFloat(e.target.value) || 1))}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600 font-mono font-bold text-slate-900"
                   />
                 </div>

@@ -345,10 +345,11 @@ export const EggInventoryView: React.FC = () => {
 
                 <input
                   type="number"
-                  min="1"
+                  min="0.1"
+                  step="any"
                   required
                   value={quantityPieces}
-                  onChange={e => setQuantityPieces(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={e => setQuantityPieces(parseFloat(e.target.value) || 0)}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">

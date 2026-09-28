@@ -492,8 +492,9 @@ export const SuppliesView: React.FC = () => {
                   <input
                     type="number"
                     min="0"
+                    step="any"
                     value={quantity}
-                    onChange={e => setQuantity(parseInt(e.target.value) || 0)}
+                    onChange={e => setQuantity(parseFloat(e.target.value) || 0)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                   />
                 </div>
@@ -503,6 +504,7 @@ export const SuppliesView: React.FC = () => {
                   <input
                     type="number"
                     min="0"
+                    step="any"
                     value={costPerUnit}
                     onChange={e => setCostPerUnit(parseFloat(e.target.value) || 0)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-semibold"
@@ -513,9 +515,10 @@ export const SuppliesView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Min Stock Alert</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.1"
+                    step="any"
                     value={minimumStock}
-                    onChange={e => setMinimumStock(parseInt(e.target.value) || 1)}
+                    onChange={e => setMinimumStock(parseFloat(e.target.value) || 1)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                   />
                 </div>
@@ -626,10 +629,11 @@ export const SuppliesView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Quantity Applied *</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.01"
+                    step="any"
                     required
                     value={usageQty}
-                    onChange={e => setUsageQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={e => setUsageQty(parseFloat(e.target.value) || 0)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                   />
                 </div>

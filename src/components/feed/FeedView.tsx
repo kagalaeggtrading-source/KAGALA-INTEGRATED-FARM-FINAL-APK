@@ -477,10 +477,11 @@ export const FeedView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Bag Weight (KG)</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.1"
+                    step="any"
                     required
                     value={bagWeightKg}
-                    onChange={e => setBagWeightKg(parseInt(e.target.value) || 50)}
+                    onChange={e => setBagWeightKg(parseFloat(e.target.value) || 50)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold"
                   />
                 </div>
@@ -490,6 +491,7 @@ export const FeedView: React.FC = () => {
                   <input
                     type="number"
                     min="0"
+                    step="any"
                     required
                     value={costPerBag}
                     onChange={e => setCostPerBag(parseFloat(e.target.value) || 0)}
@@ -504,8 +506,9 @@ export const FeedView: React.FC = () => {
                   <input
                     type="number"
                     min="0"
+                    step="any"
                     value={initialBags}
-                    onChange={e => setInitialBags(parseInt(e.target.value) || 0)}
+                    onChange={e => setInitialBags(parseFloat(e.target.value) || 0)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                   />
                 </div>
@@ -514,9 +517,10 @@ export const FeedView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Min Alert Stock (Bags)</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.1"
+                    step="any"
                     value={minimumBagsAlert}
-                    onChange={e => setMinimumBagsAlert(parseInt(e.target.value) || 10)}
+                    onChange={e => setMinimumBagsAlert(parseFloat(e.target.value) || 10)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
                   />
                 </div>
@@ -594,10 +598,11 @@ export const FeedView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Bags Purchased *</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.1"
+                    step="any"
                     required
                     value={purchBags}
-                    onChange={e => setPurchBags(Math.max(1, parseInt(e.target.value) || 1))}
+                    onChange={e => setPurchBags(parseFloat(e.target.value) || 0)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                   />
                 </div>
@@ -730,13 +735,14 @@ export const FeedView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">Bags Consumed *</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.01"
+                    step="any"
                     required
                     value={consBags}
                     onChange={e => {
-                      const bags = Math.max(1, parseInt(e.target.value) || 1);
-                      setConsBags(bags);
-                      setConsKg(bags * 50);
+                      const val = parseFloat(e.target.value) || 0;
+                      setConsBags(val);
+                      setConsKg(Number((val * 50).toFixed(2)));
                     }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                   />
@@ -746,7 +752,8 @@ export const FeedView: React.FC = () => {
                   <label className="block font-semibold text-slate-700 mb-1">KG Consumed</label>
                   <input
                     type="number"
-                    min="1"
+                    min="0.01"
+                    step="any"
                     value={consKg}
                     onChange={e => setConsKg(parseFloat(e.target.value) || 0)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"

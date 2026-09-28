@@ -910,10 +910,11 @@ export const SalesOrdersView: React.FC<SalesOrdersViewProps> = ({ initialTab = '
                           <td className="p-2 text-right">
                             <input
                               type="number"
-                              min="1"
+                              min="0.1"
+                              step="any"
                               value={item.quantityTrays}
                               onChange={e =>
-                                handleUpdateOrderItem(idx, { quantityTrays: parseInt(e.target.value) || 0 })
+                                handleUpdateOrderItem(idx, { quantityTrays: parseFloat(e.target.value) || 0 })
                               }
                               className="w-20 px-2 py-1 border border-slate-200 rounded text-right font-mono font-bold"
                             />
@@ -1105,10 +1106,11 @@ export const SalesOrdersView: React.FC<SalesOrdersViewProps> = ({ initialTab = '
                           <td className="p-2 text-right">
                             <input
                               type="number"
-                              min="1"
+                              min="0.1"
+                              step="any"
                               value={item.quantityTrays}
                               onChange={e =>
-                                handleUpdateSaleItem(idx, { quantityTrays: parseInt(e.target.value) || 0 })
+                                handleUpdateSaleItem(idx, { quantityTrays: parseFloat(e.target.value) || 0 })
                               }
                               className="w-20 px-2 py-1 border border-slate-200 rounded text-right font-mono font-bold"
                             />

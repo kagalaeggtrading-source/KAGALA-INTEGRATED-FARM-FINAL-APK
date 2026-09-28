@@ -1142,11 +1142,13 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const recordFeedConsumption = (logData: Omit<FeedConsumptionLog, 'id' | 'cost' | 'createdAt'>) => {
     const feed = feedItems.find(f => f.id === logData.feedItemId);
-    const cost = feed ? logData.bagsUsed * feed.costPerBag : 0;
-    const kgUsed = logData.kgUsed > 0 ? logData.kgUsed : (feed ? logData.bagsUsed * feed.bagWeightKg : logData.bagsUsed * 50);
+    const bagsUsed = Number(logData.bagsUsed) || 0;
+    const kgUsed = logData.kgUsed > 0 ? Number(logData.kgUsed) : (feed ? bagsUsed * feed.bagWeightKg : bagsUsed * 50);
+    const cost = feed ? Number((bagsUsed * feed.costPerBag).toFixed(2)) : 0;
 
     const newLog: FeedConsumptionLog = {
       ...logData,
+      bagsUsed,
       kgUsed,
       cost,
       id: 'FC-' + Date.now().toString().slice(-6),
@@ -1159,8 +1161,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setFeedItems(prev =>
       prev.map(f => {
         if (f.id === logData.feedItemId) {
-          const nextBags = Math.max(0, f.currentBags - logData.bagsUsed);
-          const nextKg = Math.max(0, f.currentKg - kgUsed);
+          const nextBags = Math.max(0, Number((f.currentBags - bagsUsed).toFixed(2)));
+          const nextKg = Math.max(0, Number((f.currentKg - kgUsed).toFixed(2)));
           const updated = { ...f, currentBags: nextBags, currentKg: nextKg };
           syncUpdateDoc('feed_items', f.id, updated);
           return updated;
@@ -1169,7 +1171,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       })
     );
 
-    logActivity('CREATED', 'Feed Management', `Recorded feed consumption log: ${logData.bagsUsed} bags used`);
+    logActivity('CREATED', 'Feed Management', `Recorded feed consumption log: ${bagsUsed} bags (${kgUsed} kg) used`);
   };
 
   const updateFeedConsumptionLog = (id: string, updates: Partial<FeedConsumptionLog>) => {
@@ -1247,8 +1249,10 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const recordSupplyUsage = (log: Omit<SupplyUsageLog, 'id' | 'createdAt'>) => {
+    const quantity = Number(log.quantity) || 0;
     const newLog: SupplyUsageLog = {
       ...log,
+      quantity,
       id: 'SU-' + Date.now().toString().slice(-6),
       createdAt: new Date().toISOString(),
     };
@@ -1258,7 +1262,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setSupplyItems(prev =>
       prev.map(s => {
         if (s.id === log.supplyItemId) {
-          const nextQty = Math.max(0, s.quantity - log.quantity);
+          const nextQty = Math.max(0, Number((s.quantity - quantity).toFixed(2)));
           syncUpdateDoc('supply_items', s.id, { quantity: nextQty });
           return { ...s, quantity: nextQty };
         }
@@ -1266,7 +1270,7 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       })
     );
 
-    logActivity('CREATED', 'Supplies & Pest Control', `Recorded supply usage: ${log.quantity} ${log.unit} of ${log.supplyName}`);
+    logActivity('CREATED', 'Supplies & Pest Control', `Recorded supply usage: ${quantity} ${log.unit} of ${log.supplyName}`);
   };
 
   const addCustomer = (custData: Omit<Customer, 'id' | 'createdAt'>): Customer => {

@@ -568,9 +568,10 @@ export const EggProductionView: React.FC = () => {
                     <input
                       type="number"
                       min="0"
+                      step="any"
                       required
                       value={totalCollection || ''}
-                      onChange={e => setTotalCollection(Math.max(0, parseInt(e.target.value) || 0))}
+                      onChange={e => setTotalCollection(Math.max(0, parseFloat(e.target.value) || 0))}
                       placeholder="0"
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono font-bold text-slate-900 text-base"
                     />
@@ -584,8 +585,9 @@ export const EggProductionView: React.FC = () => {
                     <input
                       type="number"
                       min="0"
+                      step="any"
                       value={rejects || ''}
-                      onChange={e => setRejects(Math.max(0, parseInt(e.target.value) || 0))}
+                      onChange={e => setRejects(Math.max(0, parseFloat(e.target.value) || 0))}
                       placeholder="0"
                       className="w-full px-3 py-2 bg-white border border-rose-300 rounded-lg font-mono font-bold text-rose-600 text-base"
                     />
@@ -629,8 +631,9 @@ export const EggProductionView: React.FC = () => {
                       <input
                         type="number"
                         min="0"
+                        step="any"
                         value={grades[grade.key] || ''}
-                        onChange={e => handleGradeChange(grade.key, parseInt(e.target.value) || 0)}
+                        onChange={e => handleGradeChange(grade.key, parseFloat(e.target.value) || 0)}
                         placeholder="0"
                         className="w-full px-2 py-1 text-xs border border-slate-300 rounded font-mono font-bold text-slate-900 text-right"
                       />
