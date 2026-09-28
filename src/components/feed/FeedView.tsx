@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useFarm } from '../../context/FarmContext';
 import {
   Wheat,
@@ -15,6 +15,7 @@ import {
   History,
   Trash2,
   Edit2,
+  Eye,
 } from 'lucide-react';
 import { formatCurrency, formatNumber } from '../../constants';
 import { FeedItem, FeedConsumptionLog } from '../../types';
@@ -23,6 +24,7 @@ export const FeedView: React.FC = () => {
   const {
     feedItems,
     addFeedItem,
+    updateFeedItem,
     deleteFeedItem,
     feedConsumptionLogs,
     feedPurchaseLogs,
@@ -40,21 +42,35 @@ export const FeedView: React.FC = () => {
   const [showConsumptionModal, setShowConsumptionModal] = useState(false);
   const [editingConsLog, setEditingConsLog] = useState<FeedConsumptionLog | null>(null);
 
+  // Requirement 1: DYNAMIC SUB-MODAL & VIEW/EDIT STATE
+  const [selectedFeedItem, setSelectedFeedItem] = useState<FeedItem | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isViewHistoryOpen, setIsViewHistoryOpen] = useState(false);
+
+  // Edit Feed Form State
+  const [editBrand, setEditBrand] = useState('');
+  const [editFeedType, setEditFeedType] = useState('');
+  const [editSupplier, setEditSupplier] = useState('');
+  const [editBagWeightKg, setEditBagWeightKg] = useState<number | string>(50);
+  const [editCostPerBag, setEditCostPerBag] = useState<number | string>(1750);
+  const [editMinimumBagsAlert, setEditMinimumBagsAlert] = useState<number | string>(10);
+  const [editNotes, setEditNotes] = useState('');
+
   // New Feed Type Form
   const [feedType, setFeedType] = useState('Layer 1 Mash');
   const [brand, setBrand] = useState('B-Meg');
   const [supplier, setSupplier] = useState('Provincial Feed Distributor');
-  const [bagWeightKg, setBagWeightKg] = useState<number>(50);
-  const [costPerBag, setCostPerBag] = useState<number>(1750);
-  const [initialBags, setInitialBags] = useState<number>(0);
-  const [minimumBagsAlert, setMinimumBagsAlert] = useState<number>(10);
+  const [bagWeightKg, setBagWeightKg] = useState<number | string>(50);
+  const [costPerBag, setCostPerBag] = useState<number | string>(1750);
+  const [initialBags, setInitialBags] = useState<number | string>(0);
+  const [minimumBagsAlert, setMinimumBagsAlert] = useState<number | string>(10);
   const [notes, setNotes] = useState('');
 
   // Purchase Form
   const [purchFeedId, setPurchFeedId] = useState('');
   const [purchDate, setPurchDate] = useState(new Date().toISOString().split('T')[0]);
-  const [purchBags, setPurchBags] = useState<number>(20);
-  const [purchCostPerBag, setPurchCostPerBag] = useState<number>(1750);
+  const [purchBags, setPurchBags] = useState<number | string>(20);
+  const [purchCostPerBag, setPurchCostPerBag] = useState<number | string>(1750);
   const [purchSupplier, setPurchSupplier] = useState('');
   const [paymentAccount, setPaymentAccount] = useState<'cash_on_hand' | 'bank_account'>('cash_on_hand');
   const [bankAccountId, setBankAccountId] = useState('');
@@ -63,8 +79,8 @@ export const FeedView: React.FC = () => {
   const [consDate, setConsDate] = useState(new Date().toISOString().split('T')[0]);
   const [consFlockId, setConsFlockId] = useState(flocks[0]?.id || '');
   const [consFeedId, setConsFeedId] = useState(feedItems[0]?.id || '');
-  const [consBags, setConsBags] = useState<number>(2);
-  const [consKg, setConsKg] = useState<number>(100);
+  const [consBags, setConsBags] = useState<number | string>(2);
+  const [consKg, setConsKg] = useState<number | string>(100);
   const [consNotes, setConsNotes] = useState('');
 
   // Calculations
@@ -83,6 +99,21 @@ export const FeedView: React.FC = () => {
   const avgDailyKg = feedConsumptionLogs.length > 0 ? totalKgAllTime / uniqueDatesCount : 0;
   const daysRemainingEstimate = avgDailyKg > 0 ? Math.floor(totalStockKg / avgDailyKg) : 0;
 
+  // Reconciliation Data Aggregation Lookup
+  const enrichedFeedItems = useMemo(() => {
+    return feedItems.map(item => {
+      const matchingPurchases = feedPurchaseLogs.filter(p => p.feedItemId === item.id);
+      const totalPurchasedBags = matchingPurchases.reduce((sum, p) => sum + (Number(p.bags) || 0), 0);
+      const totalPurchasedKg = matchingPurchases.reduce((sum, p) => sum + (Number(p.kg) || 0), 0);
+
+      return {
+        ...item,
+        totalPurchasedBags,
+        totalPurchasedKg,
+      };
+    });
+  }, [feedItems, feedPurchaseLogs]);
+
   const handleCreateFeedType = (e: React.FormEvent) => {
     e.preventDefault();
     addFeedItem(
@@ -90,13 +121,13 @@ export const FeedView: React.FC = () => {
         feedType,
         brand,
         supplier,
-        bagWeightKg: Number(bagWeightKg),
-        costPerBag: Number(costPerBag),
+        bagWeightKg: parseFloat(String(bagWeightKg)) || 50,
+        costPerBag: parseFloat(String(costPerBag)) || 0,
         purchaseDate: new Date().toISOString().split('T')[0],
-        minimumBagsAlert: Number(minimumBagsAlert),
+        minimumBagsAlert: parseFloat(String(minimumBagsAlert)) || 10,
         notes,
       },
-      Number(initialBags)
+      parseFloat(String(initialBags)) || 0
     );
     setShowAddFeedModal(false);
   };
@@ -106,16 +137,18 @@ export const FeedView: React.FC = () => {
     const item = feedItems.find(f => f.id === purchFeedId) || feedItems[0];
     if (!item) return;
 
-    const totalCost = purchBags * purchCostPerBag;
+    const bags = parseFloat(String(purchBags)) || 0;
+    const priceBag = parseFloat(String(purchCostPerBag)) || 0;
+    const totalCost = Number((bags * priceBag).toFixed(2));
 
     recordFeedPurchase({
       date: purchDate,
       feedItemId: item.id,
       feedName: `${item.brand} - ${item.feedType}`,
       supplier: purchSupplier || item.supplier,
-      bags: Number(purchBags),
-      kg: Number(purchBags) * item.bagWeightKg,
-      costPerBag: Number(purchCostPerBag),
+      bags,
+      kg: bags * item.bagWeightKg,
+      costPerBag: priceBag,
       totalCost,
       paymentAccount,
       bankAccountId: paymentAccount === 'bank_account' ? bankAccountId : undefined,
@@ -130,6 +163,9 @@ export const FeedView: React.FC = () => {
     const flock = flocks.find(f => f.id === consFlockId) || flocks[0];
     if (!item) return;
 
+    const bags = parseFloat(String(consBags)) || 0;
+    const kg = parseFloat(String(consKg)) || bags * item.bagWeightKg;
+
     if (editingConsLog) {
       updateFeedConsumptionLog(editingConsLog.id, {
         date: consDate,
@@ -137,8 +173,8 @@ export const FeedView: React.FC = () => {
         houseId: flock?.houseId || 'default',
         flockId: flock?.id || 'default',
         feedItemId: item.id,
-        bagsUsed: Number(consBags),
-        kgUsed: Number(consKg > 0 ? consKg : consBags * item.bagWeightKg),
+        bagsUsed: bags,
+        kgUsed: kg,
         notes: consNotes,
       });
       setEditingConsLog(null);
@@ -149,8 +185,8 @@ export const FeedView: React.FC = () => {
         houseId: flock?.houseId || 'default',
         flockId: flock?.id || 'default',
         feedItemId: item.id,
-        bagsUsed: Number(consBags),
-        kgUsed: Number(consKg > 0 ? consKg : consBags * item.bagWeightKg),
+        bagsUsed: bags,
+        kgUsed: kg,
         notes: consNotes,
       });
     }
@@ -173,6 +209,48 @@ export const FeedView: React.FC = () => {
     if (confirm('Are you sure you want to delete this feed consumption log? This action will move the record to the trash.')) {
       deleteFeedConsumptionLog(logId);
     }
+  };
+
+  // Requirement 2: Handlers for View History and Edit Feed Product
+  const handleOpenViewHistory = (item: FeedItem) => {
+    setSelectedFeedItem(item);
+    setIsViewHistoryOpen(true);
+  };
+
+  const handleOpenEditModal = (item: FeedItem) => {
+    setSelectedFeedItem(item);
+    setEditBrand(item.brand);
+    setEditFeedType(item.feedType);
+    setEditSupplier(item.supplier);
+    setEditBagWeightKg(item.bagWeightKg);
+    setEditCostPerBag(item.costPerBag);
+    setEditMinimumBagsAlert(item.minimumBagsAlert);
+    setEditNotes(item.notes || '');
+    setIsEditModalOpen(true);
+  };
+
+  // Requirement 3: Floating-point precision string update handler
+  const handleUpdateFeedProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedFeedItem || !editBrand.trim() || !editFeedType.trim()) return;
+
+    const bagWeight = parseFloat(String(editBagWeightKg)) || 50;
+    const costBag = parseFloat(String(editCostPerBag)) || 0;
+    const costKg = costBag > 0 ? Number((costBag / bagWeight).toFixed(2)) : 0;
+
+    updateFeedItem(selectedFeedItem.id, {
+      brand: editBrand.trim(),
+      feedType: editFeedType.trim(),
+      supplier: editSupplier.trim(),
+      bagWeightKg: bagWeight,
+      costPerBag: costBag,
+      costPerKg: costKg,
+      minimumBagsAlert: parseFloat(String(editMinimumBagsAlert)) || 10,
+      notes: editNotes.trim(),
+    });
+
+    setIsEditModalOpen(false);
+    setSelectedFeedItem(null);
   };
 
   return (
@@ -298,6 +376,7 @@ export const FeedView: React.FC = () => {
                 <tr>
                   <th className="p-2.5">Brand / Supplier</th>
                   <th className="p-2.5">Feed Type</th>
+                  <th className="p-2.5 text-right font-bold text-indigo-900">Total Purchased</th>
                   <th className="p-2.5 text-right font-bold text-slate-900">Available Bags</th>
                   <th className="p-2.5 text-right">Stock (KG)</th>
                   <th className="p-2.5 text-right">Cost / Bag</th>
@@ -307,7 +386,7 @@ export const FeedView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {feedItems.map(item => {
+                {enrichedFeedItems.map(item => {
                   const isLow = item.currentBags <= item.minimumBagsAlert;
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/70">
@@ -316,6 +395,9 @@ export const FeedView: React.FC = () => {
                         <span className="text-[11px] font-normal text-slate-400 block">{item.supplier}</span>
                       </td>
                       <td className="p-2.5 text-slate-800">{item.feedType}</td>
+                      <td className="p-2.5 text-right font-mono font-semibold text-indigo-950">
+                        {formatNumber(item.totalPurchasedBags)} bags ({formatNumber(item.totalPurchasedKg)} kg)
+                      </td>
                       <td className="p-2.5 text-right font-mono font-bold text-slate-900 text-sm">
                         {item.currentBags} <span className="text-xs font-normal text-slate-500">bags</span>
                       </td>
@@ -331,18 +413,35 @@ export const FeedView: React.FC = () => {
                           {isLow ? 'LOW STOCK' : 'OK'}
                         </span>
                       </td>
+                      {/* Requirement 2: UI ACTIONS COLUMN OVERHAUL */}
                       <td className="p-2.5 text-right">
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete feed product ${item.brand} - ${item.feedType}?`)) {
-                              deleteFeedItem(item.id);
-                            }
-                          }}
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
-                          title="Delete Feed Product"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleOpenViewHistory(item)}
+                            className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-colors cursor-pointer"
+                            title="View Purchase History"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenEditModal(item)}
+                            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded transition-colors cursor-pointer"
+                            title="Edit Feed Product"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete feed product ${item.brand} - ${item.feedType}?`)) {
+                                deleteFeedItem(item.id);
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                            title="Delete Feed Product"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -441,7 +540,7 @@ export const FeedView: React.FC = () => {
               </h3>
               <button
                 onClick={() => setShowAddFeedModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
               >
                 ✕
               </button>
@@ -541,15 +640,218 @@ export const FeedView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowAddFeedModal(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs cursor-pointer"
                 >
                   Save Feed Product
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: VIEW FEED PURCHASE HISTORY */}
+      {isViewHistoryOpen && selectedFeedItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 border border-slate-200 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div>
+                <h3 className="font-heading font-bold text-base text-slate-900">
+                  {selectedFeedItem.brand} - {selectedFeedItem.feedType} Purchase History
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Supplier: {selectedFeedItem.supplier} • Available Stock: {selectedFeedItem.currentBags} bags
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setIsViewHistoryOpen(false);
+                  setSelectedFeedItem(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 flex-1 overflow-y-auto space-y-3 text-xs custom-scrollbar">
+              {feedPurchaseLogs.filter(p => p.feedItemId === selectedFeedItem.id).length === 0 ? (
+                <div className="p-8 text-center text-slate-400 italic bg-slate-50 rounded-lg border border-slate-200">
+                  No historical purchase transactions recorded for this feed item yet.
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-100 text-slate-600 font-semibold">
+                      <tr>
+                        <th className="p-2.5">Date</th>
+                        <th className="p-2.5">Supplier</th>
+                        <th className="p-2.5 text-right">Bags Purchased</th>
+                        <th className="p-2.5 text-right">Price / Bag</th>
+                        <th className="p-2.5 text-right">Total Cost</th>
+                        <th className="p-2.5">Payment Method</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {feedPurchaseLogs
+                        .filter(p => p.feedItemId === selectedFeedItem.id)
+                        .map(log => (
+                          <tr key={log.id} className="hover:bg-slate-50/70">
+                            <td className="p-2.5 font-mono text-slate-700">{log.date}</td>
+                            <td className="p-2.5 text-slate-800">{log.supplier || selectedFeedItem.supplier}</td>
+                            <td className="p-2.5 text-right font-mono font-bold text-slate-900">{log.bags} bags</td>
+                            <td className="p-2.5 text-right font-mono text-slate-700">{formatCurrency(log.costPerBag)}</td>
+                            <td className="p-2.5 text-right font-mono font-bold text-emerald-700">{formatCurrency(log.totalCost)}</td>
+                            <td className="p-2.5 text-slate-600 capitalize">{log.paymentAccount.replace('_', ' ')}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 flex justify-end">
+              <button
+                onClick={() => {
+                  setIsViewHistoryOpen(false);
+                  setSelectedFeedItem(null);
+                }}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold text-xs cursor-pointer"
+              >
+                Close History
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: EDIT FEED PRODUCT */}
+      {isEditModalOpen && selectedFeedItem && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in zoom-in-95 duration-150">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-slate-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <h3 className="font-heading font-bold text-base text-slate-900">
+                Edit Feed Product Details
+              </h3>
+              <button
+                onClick={() => {
+                  setIsEditModalOpen(false);
+                  setSelectedFeedItem(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateFeedProduct} className="mt-4 space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Brand Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={editBrand}
+                  onChange={e => setEditBrand(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold text-slate-900"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Feed Formulation / Stage *</label>
+                <input
+                  type="text"
+                  required
+                  value={editFeedType}
+                  onChange={e => setEditFeedType(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Bag Weight (KG)</label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="any"
+                    required
+                    value={editBagWeightKg}
+                    onChange={e => setEditBagWeightKg(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Price per Bag (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    required
+                    value={editCostPerBag}
+                    onChange={e => setEditCostPerBag(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Supplier Store</label>
+                  <input
+                    type="text"
+                    value={editSupplier}
+                    onChange={e => setEditSupplier(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Min Alert Stock (Bags)</label>
+                  <input
+                    type="number"
+                    min="0.1"
+                    step="any"
+                    value={editMinimumBagsAlert}
+                    onChange={e => setEditMinimumBagsAlert(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Notes / Remarks</label>
+                <textarea
+                  rows={2}
+                  value={editNotes}
+                  onChange={e => setEditNotes(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditModalOpen(false);
+                    setSelectedFeedItem(null);
+                  }}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs cursor-pointer"
+                >
+                  Save Product Changes
                 </button>
               </div>
             </form>
@@ -567,7 +869,7 @@ export const FeedView: React.FC = () => {
               </h3>
               <button
                 onClick={() => setShowPurchaseModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
               >
                 ✕
               </button>
@@ -602,7 +904,7 @@ export const FeedView: React.FC = () => {
                     step="any"
                     required
                     value={purchBags}
-                    onChange={e => setPurchBags(parseFloat(e.target.value) || 0)}
+                    onChange={e => setPurchBags(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                   />
                 </div>
@@ -612,9 +914,10 @@ export const FeedView: React.FC = () => {
                   <input
                     type="number"
                     min="0"
+                    step="any"
                     required
                     value={purchCostPerBag}
-                    onChange={e => setPurchCostPerBag(parseFloat(e.target.value) || 0)}
+                    onChange={e => setPurchCostPerBag(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                   />
                 </div>
@@ -623,7 +926,7 @@ export const FeedView: React.FC = () => {
               <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between font-bold">
                 <span className="text-slate-700">Total Purchase Cost:</span>
                 <span className="text-emerald-700 text-sm font-mono">
-                  {formatCurrency(purchBags * purchCostPerBag)}
+                  {formatCurrency((parseFloat(String(purchBags)) || 0) * (parseFloat(String(purchCostPerBag)) || 0))}
                 </span>
               </div>
 
@@ -662,13 +965,13 @@ export const FeedView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPurchaseModal(false)}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold shadow-xs"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold shadow-xs cursor-pointer"
                 >
                   Record Purchase & Add Stock
                 </button>
@@ -691,7 +994,7 @@ export const FeedView: React.FC = () => {
                   setShowConsumptionModal(false);
                   setEditingConsLog(null);
                 }}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold"
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
               >
                 ✕
               </button>
@@ -740,9 +1043,12 @@ export const FeedView: React.FC = () => {
                     required
                     value={consBags}
                     onChange={e => {
-                      const val = parseFloat(e.target.value) || 0;
+                      const val = e.target.value;
                       setConsBags(val);
-                      setConsKg(Number((val * 50).toFixed(2)));
+                      const parsed = parseFloat(val);
+                      if (!isNaN(parsed)) {
+                        setConsKg(Number((parsed * 50).toFixed(2)));
+                      }
                     }}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                   />
@@ -755,7 +1061,7 @@ export const FeedView: React.FC = () => {
                     min="0.01"
                     step="any"
                     value={consKg}
-                    onChange={e => setConsKg(parseFloat(e.target.value) || 0)}
+                    onChange={e => setConsKg(e.target.value)}
                     className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-slate-900"
                   />
                 </div>
@@ -790,7 +1096,7 @@ export const FeedView: React.FC = () => {
                     setShowConsumptionModal(false);
                     setEditingConsLog(null);
                   }}
-                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium"
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
                 >
                   Cancel
                 </button>
