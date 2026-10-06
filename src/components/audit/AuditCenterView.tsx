@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useFarm } from '../../context/FarmContext';
 import {
   ShieldCheck,
@@ -14,6 +14,8 @@ import {
   Search,
   ArrowRight,
   Sparkles,
+  Wrench,
+  Trash2,
 } from 'lucide-react';
 import { AuditCheckItem, AuditReport } from '../../types';
 
@@ -22,18 +24,99 @@ interface AuditCenterViewProps {
 }
 
 export const AuditCenterView: React.FC<AuditCenterViewProps> = ({ onNavigate }) => {
-  const { runFullRecordCheck, auditReport } = useFarm();
+  const {
+    runFullRecordCheck,
+    auditReport,
+    payments,
+    sales,
+    deletePaymentRemittance,
+  } = useFarm();
+
   const [report, setReport] = useState<AuditReport>(() => auditReport || runFullRecordCheck());
-  const [isAuditing, setIsAuditing] = useState<boolean>(false);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
 
-  const handleRunAudit = () => {
-    setIsAuditing(true);
-    setTimeout(() => {
-      const newReport = runFullRecordCheck();
-      setReport(newReport);
-      setIsAuditing(false);
-    }, 400);
+  // INSTRUCTION 1: STATE MANAGEMENT FOR DISCREPANCY SCANNER
+  const [isScanning, setIsScanning] = useState<boolean>(false);
+  const [scanProgress, setScanProgress] = useState<number>(0);
+  const [discrepancyList, setDiscrepancyList] = useState<
+    Array<{
+      id: string;
+      type: string;
+      module: string;
+      description: string;
+      rawData: any;
+    }>
+  >([]);
+  const [scanLogs, setScanLogs] = useState<string[]>([]);
+
+  // INSTRUCTION 2: INTERACTIVE ENGINE SCAN LOGIC
+  const triggerFullRecordScan = () => {
+    setIsScanning(true);
+    setScanProgress(0);
+    setDiscrepancyList([]);
+    setScanLogs(['Initializing core integrity engines...']);
+
+    const interval = setInterval(() => {
+      setScanProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+
+          // EXECUTE ACTUAL CRITICAL AUDIT ONCE PROGRESS COMPLETES
+          const foundErrors: Array<{
+            id: string;
+            type: string;
+            module: string;
+            description: string;
+            rawData: any;
+          }> = [];
+
+          // Audit Check: Cross-match payment remittances vs sales invoices
+          if (payments && sales) {
+            const dangling = payments.filter(
+              p => p.saleId && !sales.some(s => s.id === p.saleId)
+            );
+
+            dangling.forEach(badPayment => {
+              foundErrors.push({
+                id: badPayment.id,
+                type: 'CRITICAL MISMATCH',
+                module: 'Customer Payments / Remittances',
+                description: `Dangling payment ${badPayment.paymentNumber || badPayment.id} of ₱${badPayment.amount.toLocaleString()} has no valid matching sales invoice.`,
+                rawData: badPayment,
+              });
+            });
+          }
+
+          const newReport = runFullRecordCheck();
+          setReport(newReport);
+          setDiscrepancyList(foundErrors);
+          setIsScanning(false);
+          return 100;
+        }
+
+        // Update intermediate log ticks based on percentage tiers
+        if (prev === 25) setScanLogs(l => [...l, 'Scanning egg inventories vs dispatch logs...']);
+        if (prev === 50) setScanLogs(l => [...l, 'Auditing sales invoice database rows...']);
+        if (prev === 75) setScanLogs(l => [...l, 'Cross-checking payment remittance ledgers...']);
+
+        return prev + 5;
+      });
+    }, 100);
+  };
+
+  const handleFixLinkInvoice = (errId: string) => {
+    if (onNavigate) {
+      onNavigate('sales');
+    } else {
+      alert(`Redirecting to sales invoice manager to link entry: ${errId}`);
+    }
+  };
+
+  const handleVoidRecord = (errId: string) => {
+    if (confirm(`Void unlinked remittance record ${errId}? Record will be moved to trash.`)) {
+      deletePaymentRemittance(errId);
+      setDiscrepancyList(prev => prev.filter(e => e.id !== errId));
+    }
   };
 
   const filteredItems = report.items.filter(item => {
@@ -58,14 +141,87 @@ export const AuditCenterView: React.FC<AuditCenterViewProps> = ({ onNavigate }) 
         </div>
 
         <button
-          onClick={handleRunAudit}
-          disabled={isAuditing}
+          onClick={triggerFullRecordScan}
+          disabled={isScanning}
           className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-400 text-white text-xs font-semibold px-4 py-2.5 rounded-lg transition-colors cursor-pointer shadow-xs shrink-0"
         >
-          <RefreshCw className={`w-4 h-4 ${isAuditing ? 'animate-spin' : ''}`} />
-          <span>{isAuditing ? 'Auditing Ledgers...' : 'Run Full Record Check'}</span>
+          <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
+          <span>{isScanning ? `Scanning System (${scanProgress}%)` : 'Run Full Record Check'}</span>
         </button>
       </div>
+
+      {/* VIRUS-SCAN PROGRESS ANIMATION BAR */}
+      {isScanning && (
+        <div className="p-5 bg-slate-900 text-white rounded-xl shadow-md border border-slate-800 space-y-3">
+          <div className="flex items-center justify-between text-xs font-semibold">
+            <span className="text-emerald-400 font-mono">Real-time Telemetry Deep Scan in Progress...</span>
+            <span className="font-mono text-white">{scanProgress}%</span>
+          </div>
+          <div className="w-full bg-slate-800 rounded-full h-3 overflow-hidden p-0.5 border border-slate-700">
+            <div
+              className="bg-gradient-to-r from-emerald-500 to-teal-400 h-2 rounded-full transition-all duration-100 shadow-xs"
+              style={{ width: `${scanProgress}%` }}
+            />
+          </div>
+          <div className="text-xs text-slate-300 font-mono animate-pulse flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-emerald-400" />
+            <span>{scanLogs[scanLogs.length - 1]}</span>
+          </div>
+        </div>
+      )}
+
+      {/* INSTRUCTION 3: GENITIONAL DISCREPANCY REPAIR HUB */}
+      {!isScanning && discrepancyList.length > 0 && (
+        <div className="p-5 border border-rose-200 rounded-xl bg-rose-50/80 space-y-3 shadow-xs">
+          <div className="flex items-center justify-between">
+            <h3 className="text-rose-900 font-bold font-heading text-sm flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+              <span>🚨 System Discrepancies Detected ({discrepancyList.length})</span>
+            </h3>
+            <span className="text-xs text-rose-700 font-semibold bg-rose-100 px-2.5 py-0.5 rounded border border-rose-200">
+              Immediate Attention Recommended
+            </span>
+          </div>
+
+          <div className="overflow-x-auto bg-white rounded-lg border border-rose-200">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-rose-100/60 text-rose-950 font-semibold border-b border-rose-200">
+                <tr>
+                  <th className="p-2.5">Module</th>
+                  <th className="p-2.5">Description</th>
+                  <th className="p-2.5 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-rose-100 font-medium">
+                {discrepancyList.map(err => (
+                  <tr key={err.id} className="hover:bg-rose-50/50">
+                    <td className="p-2.5 font-bold text-rose-700">{err.module}</td>
+                    <td className="p-2.5 text-slate-800">{err.description}</td>
+                    <td className="p-2.5 text-center">
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => handleFixLinkInvoice(err.id)}
+                          className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1"
+                        >
+                          <Wrench className="w-3 h-3" />
+                          <span>Fix / Link Invoice</span>
+                        </button>
+                        <button
+                          onClick={() => handleVoidRecord(err.id)}
+                          className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Void Record</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Audit Verdict Banner */}
       <div

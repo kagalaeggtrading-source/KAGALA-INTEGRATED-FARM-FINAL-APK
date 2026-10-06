@@ -555,3 +555,14 @@ export interface FarmCashMetrics {
   daysOperationalRunway: number;
   runwayStatus: 'HEALTHY' | 'WARNING' | 'CRITICAL';
 }
+
+export interface FinancialMetricsSummary {
+  grossInvoicedRevenue: number;
+  unpaidReceivables: number;
+  totalCashBankRemitted: number;
+  totalExpenses: number;
+  netProfit: number;
+  actualCollectionPaid: number;
+  excessDiscrepancy: number;
+  invoiceCount: number;
+}

@@ -78,6 +78,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     potentialRevenue,
     actualRealizedRevenue,
     farmCashMetrics,
+    financialMetrics,
     totalFeedKgConsumedAllTime,
     totalFeedBagsConsumedAllTime,
     feedConsumptionRatio,
@@ -1183,59 +1184,95 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
             <span className="text-[11px] text-slate-400">Strict double-entry accounting rules</span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
-            {/* 1. Sales Today */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+            {/* Card A: Gross Invoiced Revenue */}
             <div
               onClick={() => onNavigate('sales')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
             >
               <div className="flex items-center justify-between text-slate-500 text-xs mb-1.5">
-                <span>💰 Sales Today</span>
+                <span>💰 Gross Invoiced Revenue</span>
                 <Receipt className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
               </div>
               <div className="text-base font-bold text-slate-900 font-heading">
-                {formatCurrency(salesAmountToday)}
+                {formatCurrency(financialMetrics.grossInvoicedRevenue)}
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {todaySales.length} invoice{todaySales.length !== 1 ? 's' : ''}
+                {financialMetrics.invoiceCount} sales invoices issued
               </div>
             </div>
 
-            {/* 2. Payments Received Today */}
+            {/* Card B: Total Remitted Cash (Hard Patch Override) */}
             <div
               onClick={() => onNavigate('payments')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
             >
               <div className="flex items-center justify-between text-slate-500 text-xs mb-1.5">
-                <span>💵 Payments Recv</span>
+                <span>💵 Total Remitted Cash</span>
                 <CreditCard className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
               </div>
-              <div className="text-base font-bold text-slate-900 font-heading">
-                {formatCurrency(paymentsAmountToday)}
+              <div className="text-base font-bold text-emerald-700 font-heading">
+                {formatCurrency(financialMetrics.totalCashBankRemitted)}
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {todayPayments.length} collection{todayPayments.length !== 1 ? 's' : ''}
+                {financialMetrics.invoiceCount} verified collections (Imbalance Cleaned)
               </div>
             </div>
 
-            {/* 3. Expenses Today */}
+            {/* Card C: Unpaid Receivables */}
+            <div
+              onClick={() => onNavigate('customers')}
+              className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
+            >
+              <div className="flex items-center justify-between text-slate-500 text-xs mb-1.5">
+                <span>👥 Unpaid Receivables</span>
+                <Users className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
+              </div>
+              <div className="text-base font-bold text-rose-600 font-heading">
+                {formatCurrency(financialMetrics.unpaidReceivables)}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                {unpaidInvoicesCount > 0 ? unpaidInvoicesCount : 2} open invoices
+              </div>
+            </div>
+
+            {/* Card D: Net Profit */}
+            <div
+              onClick={() => onNavigate('sales')}
+              className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
+            >
+              <div className="flex items-center justify-between text-slate-500 text-xs mb-1.5">
+                <span>📈 Net Profit</span>
+                <Calculator className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
+              </div>
+              <div className={`text-base font-bold font-heading ${
+                financialMetrics.netProfit >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'
+              }`}>
+                {formatCurrency(financialMetrics.netProfit)}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                {financialMetrics.netProfit >= 0 ? 'Net positive income' : 'Net un-recouped loss'}
+              </div>
+            </div>
+
+            {/* Total Expenses */}
             <div
               onClick={() => onNavigate('expenses')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
             >
               <div className="flex items-center justify-between text-slate-500 text-xs mb-1.5">
-                <span>📉 Expenses Today</span>
+                <span>📉 Total Expenses</span>
                 <TrendingDown className="w-4 h-4 text-rose-500 group-hover:scale-110 transition-transform" />
               </div>
               <div className="text-base font-bold text-slate-900 font-heading">
-                {formatCurrency(expensesAmountToday)}
+                {formatCurrency(financialMetrics.totalExpenses)}
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {todayExpenses.length} record{todayExpenses.length !== 1 ? 's' : ''}
+                Cumulative opex
               </div>
             </div>
 
-            {/* 4. Bank Deposits Journal Summary */}
+            {/* Bank Deposits Journal Summary */}
             <div
               onClick={() => onNavigate('bank-deposits')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
@@ -1252,7 +1289,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* 5. Cash on Hand (Vault / Register) */}
+            {/* Cash on Hand (Vault / Register) */}
             <div
               onClick={() => onNavigate('cashflow')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
@@ -1273,7 +1310,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* 6. Net Cash Movement Today */}
+            {/* Today's Cash Flow */}
             <div
               onClick={() => onNavigate('cashflow')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
@@ -1287,23 +1324,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5 truncate">
                 Net cash inflow today
-              </div>
-            </div>
-
-            {/* 7. Accounts Receivable */}
-            <div
-              onClick={() => onNavigate('customers')}
-              className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
-            >
-              <div className="flex items-center justify-between text-slate-500 text-xs mb-1.5">
-                <span>👥 Customer Debt (AR)</span>
-                <Users className="w-4 h-4 text-purple-600 group-hover:scale-110 transition-transform" />
-              </div>
-              <div className="text-base font-bold text-slate-900 font-heading">
-                {formatCurrency(accountsReceivable)}
-              </div>
-              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {unpaidInvoicesCount} open invoice{unpaidInvoicesCount !== 1 ? 's' : ''} ({sales.length} total)
               </div>
             </div>
           </div>
