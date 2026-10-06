@@ -193,6 +193,8 @@ export interface FarmContextType {
   addPayment: (payment: Omit<CustomerPayment, 'id' | 'paymentNumber' | 'createdAt'>) => CustomerPayment;
   updatePayment: (id: string, updates: Partial<CustomerPayment>) => void;
   deletePayment: (id: string) => void;
+  updatePaymentRemittance: (id: string, updates: Partial<CustomerPayment>) => void;
+  deletePaymentRemittance: (id: string) => void;
 
   // Expenses
   expenses: FarmExpense[];
@@ -1350,12 +1352,14 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const addSale = (saleData: Omit<FarmSale, 'id' | 'saleNumber' | 'createdAt' | 'balance'>): FarmSale => {
     const saleNumber = 'INV-' + (sales.length + 1).toString().padStart(4, '0');
-    const balance = Math.max(0, saleData.total - saleData.paidAmount);
+    const actualPaid = Math.min(saleData.paidAmount, saleData.total);
+    const balance = Math.max(0, saleData.total - actualPaid);
 
     const newSale: FarmSale = {
       ...saleData,
       id: 'SALE-' + Date.now().toString().slice(-6),
       saleNumber,
+      paidAmount: actualPaid,
       balance,
       createdAt: new Date().toISOString(),
     };
@@ -1365,13 +1369,13 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     logActivity('CREATED', 'Sales & Invoicing', `Issued sales invoice ${newSale.saleNumber} for ${newSale.customerName}: ₱${newSale.total.toLocaleString()}`);
 
-    if (saleData.paidAmount > 0) {
+    if (actualPaid > 0) {
       const payNum = 'PAY-' + Date.now().toString().slice(-6);
       const newPayment: CustomerPayment = {
         id: payNum,
         paymentNumber: payNum,
         paymentDate: saleData.date,
-        amount: saleData.paidAmount,
+        amount: actualPaid,
         paymentMethod: saleData.paymentMethod || 'Cash',
         referenceNumber: saleData.referenceNumber,
         customerId: saleData.customerId,
@@ -1439,6 +1443,29 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (target) {
       moveToTrash('payment', id, `Payment: ${target.paymentNumber}`, `₱${target.amount.toLocaleString()}`, target.paymentDate, target);
       logActivity('DELETED', 'Customer Payments', `Moved payment record ${target.paymentNumber} to trash`);
+    }
+    setPayments(prev => prev.filter(p => p.id !== id));
+    syncDeleteDoc('payments', id);
+  };
+
+  const updatePaymentRemittance = (id: string, updates: Partial<CustomerPayment>) => {
+    setPayments(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)));
+    syncUpdateDoc('payments', id, updates);
+    logActivity('EDITED', 'Customer Payments', `Updated payment remittance transaction code: ${id}`);
+  };
+
+  const deletePaymentRemittance = (id: string) => {
+    const target = payments.find(p => p.id === id);
+    if (target) {
+      moveToTrash(
+        'payment_remittance',
+        id,
+        `Payment Remittance: ${target.paymentNumber} (${target.customerName})`,
+        `Amount: ₱${target.amount.toLocaleString()} • Method: ${target.paymentMethod}`,
+        target.paymentDate,
+        target
+      );
+      logActivity('DELETED', 'Customer Payments', `Purged payment remittance transaction code: ${id}`);
     }
     setPayments(prev => prev.filter(p => p.id !== id));
     syncDeleteDoc('payments', id);
@@ -2137,6 +2164,8 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         addPayment,
         updatePayment,
         deletePayment,
+        updatePaymentRemittance,
+        deletePaymentRemittance,
         expenses: sortedExpenses,
         addExpense,
         updateExpense,

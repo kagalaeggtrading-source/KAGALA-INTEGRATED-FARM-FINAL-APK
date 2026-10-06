@@ -61,9 +61,11 @@ export const BankingView: React.FC = () => {
   const [depositNotes, setDepositNotes] = useState('');
 
   // Computed Financial Totals using Accounting Formula
-  const totalPaymentsReceived = payments.reduce((s, p) => s + p.amount, 0);
-  const totalFarmExpenses = expenses.reduce((s, e) => s + e.amount, 0);
-  const totalCompletedBankDeposits = bankDeposits.reduce((s, d) => s + d.amount, 0);
+  const totalPaymentsReceived = payments.reduce((s, p) => s + (parseFloat(String(p.amount)) || 0), 0);
+  const totalFarmExpenses = expenses.reduce((s, e) => s + (parseFloat(String(e.amount)) || 0), 0);
+  const totalCompletedBankDeposits = bankDeposits.length === 0
+    ? 0
+    : bankDeposits.reduce((s, d) => s + (parseFloat(String(d.amount)) || 0), 0);
 
   const dynamicCashOnHand = totalPaymentsReceived - totalFarmExpenses - totalCompletedBankDeposits;
   const totalBankBalance = bankAccounts.reduce((s, b) => s + b.currentBalance, 0);

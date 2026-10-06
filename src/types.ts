@@ -449,6 +449,7 @@ export type TrashEntityType =
   | 'order'
   | 'sale'
   | 'payment'
+  | 'payment_remittance'
   | 'expense'
   | 'bank_account'
   | 'bank_deposit'

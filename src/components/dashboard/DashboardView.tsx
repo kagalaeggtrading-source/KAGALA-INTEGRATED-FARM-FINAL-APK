@@ -121,15 +121,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const hdpToday = liveBirds > 0 ? (usableEggsToday / liveBirds) * 100 : 0;
 
   // 4. Mortality Today
+  // 4. Mortality Today (Issue 1: Dynamic Mortality Sum)
   const todayAdjustments = flockAdjustments.filter(a => a.date === todayStr);
   const mortalityToday = todayAdjustments
     .filter(a => a.type === 'mortality')
-    .reduce((sum, a) => sum + a.quantity, 0);
+    .reduce((sum, a) => sum + (parseFloat(String(a.quantity)) || 0), 0);
 
-  // 5. Feed Used Today
+  // 5. Feed Used Today (Issue 5: Decimal Feed Entry Telemetry)
   const todayFeedLogs = feedConsumptionLogs.filter(f => f.date === todayStr);
-  const feedBagsUsedToday = todayFeedLogs.reduce((sum, f) => sum + f.bagsUsed, 0);
-  const feedKgUsedToday = todayFeedLogs.reduce((sum, f) => sum + f.kgUsed, 0);
+  const feedBagsUsedToday = todayFeedLogs.reduce((sum, f) => sum + (parseFloat(String(f.bagsUsed)) || 0), 0);
+  const feedKgUsedToday = todayFeedLogs.reduce((sum, f) => sum + (parseFloat(String(f.kgUsed)) || 0), 0);
 
   // 6. Pending Orders
   const pendingOrders = orders.filter(
@@ -138,47 +139,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   // 7. Sales Today
   const todaySales = sales.filter(s => s.date === todayStr);
-  const salesAmountToday = todaySales.reduce((sum, s) => sum + s.total, 0);
+  const salesAmountToday = todaySales.reduce((sum, s) => sum + (parseFloat(String(s.total)) || 0), 0);
 
   // 8. Payments Received Today
   const todayPayments = payments.filter(p => p.paymentDate === todayStr);
-  const paymentsAmountToday = todayPayments.reduce((sum, p) => sum + p.amount, 0);
+  const paymentsAmountToday = todayPayments.reduce((sum, p) => sum + (parseFloat(String(p.amount)) || 0), 0);
 
   // 9. Expenses Today
   const todayExpenses = expenses.filter(e => e.date === todayStr);
-  const expensesAmountToday = todayExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const expensesAmountToday = todayExpenses.reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
 
-  // 10. RULE 1: Total Bank Deposits + Direct Bank Transfer Sales
-  const completedBankDeposits = bankDeposits.reduce((sum, d) => sum + d.amount, 0);
-  const directBankTransferSales = payments
-    .filter(p => p.accountReceivedInto === 'bank_account' || p.paymentMethod === 'Bank Transfer')
-    .reduce((sum, p) => sum + p.amount, 0);
-  const totalBankDepositsAndTransfers = completedBankDeposits + directBankTransferSales;
+  // Audit Guard: Check true record state seen in the UI Bank Deposits Journal (0 entries -> ₱0.00)
+  const completedBankDeposits = useMemo(() => {
+    if (!bankDeposits || bankDeposits.length === 0) return 0;
+    return bankDeposits.reduce((sum, d) => sum + (parseFloat(String(d.amount)) || 0), 0);
+  }, [bankDeposits]);
 
-  // 11. RULE 2: Dynamic Cash on Hand Breakdown
+  const totalBankDepositsAndTransfers = completedBankDeposits;
+
+  // 11. Dynamic Cash on Hand Breakdown
   const totalCashPaymentsReceived = payments
     .filter(p => p.accountReceivedInto === 'cash_on_hand' || p.paymentMethod === 'Cash')
-    .reduce((sum, p) => sum + p.amount, 0);
+    .reduce((sum, p) => sum + (parseFloat(String(p.amount)) || 0), 0);
   const totalCashExpensesPaidOut = expenses
     .filter(e => e.paymentAccount === 'cash_on_hand' || !e.paymentAccount)
-    .reduce((sum, e) => sum + e.amount, 0);
+    .reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
   const totalCashDepositedToBank = bankDeposits
     .filter(d => d.sourceAccount === 'Cash on Hand' || !d.sourceAccount)
-    .reduce((sum, d) => sum + d.amount, 0);
+    .reduce((sum, d) => sum + (parseFloat(String(d.amount)) || 0), 0);
 
   // Net Cash Movement Today
   const cashPaymentsToday = todayPayments
     .filter(p => p.accountReceivedInto === 'cash_on_hand')
-    .reduce((sum, p) => sum + p.amount, 0);
+    .reduce((sum, p) => sum + (parseFloat(String(p.amount)) || 0), 0);
   const cashExpensesToday = todayExpenses
     .filter(e => e.paymentAccount === 'cash_on_hand')
-    .reduce((sum, e) => sum + e.amount, 0);
+    .reduce((sum, e) => sum + (parseFloat(String(e.amount)) || 0), 0);
   const netCashMovementToday = cashPaymentsToday - cashExpensesToday;
 
-  // Accounts Receivable Total
-  const totalBilledAllTime = sales.reduce((sum, s) => sum + s.total, 0);
-  const totalPaidAllTime = payments.reduce((sum, p) => sum + p.amount, 0);
-  const accountsReceivable = Math.max(0, totalBilledAllTime - totalPaidAllTime);
+  // Issue 3: Customer Debt / Accounts Receivable (AR) Total Outstanding Balances
+  const accountsReceivable = sales.reduce((sum, s) => sum + (parseFloat(String(s.balance)) || 0), 0);
+  const unpaidInvoicesCount = sales.filter(s => (s.balance || 0) > 0).length;
 
   // Active alerts
   const alerts: { id: string; type: 'warning' | 'critical' | 'info'; message: string; actionTab: string }[] = [];
@@ -1234,20 +1235,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* 4. RULE 1: Total Bank Deposits & Direct Transfers */}
+            {/* 4. Bank Deposits Journal Summary */}
             <div
               onClick={() => onNavigate('bank-deposits')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
             >
               <div className="flex items-center justify-between text-slate-500 text-xs mb-1.5">
-                <span>🏦 Bank Deposits & Transfers</span>
+                <span>🏦 Bank Deposits Journal</span>
                 <Landmark className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
               </div>
               <div className="text-base font-bold text-indigo-900 font-heading">
-                {formatCurrency(totalBankDepositsAndTransfers)}
+                {formatCurrency(completedBankDeposits)}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5 truncate" title={`Deposits: ${formatCurrency(completedBankDeposits)} + Direct Transfers: ${formatCurrency(directBankTransferSales)}`}>
-                Deposits + Direct Transfers
+              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+                {bankDeposits.length} deposit slip{bankDeposits.length !== 1 ? 's' : ''} logged
               </div>
             </div>
 
@@ -1302,7 +1303,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 {formatCurrency(accountsReceivable)}
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                Uncollected invoices
+                {unpaidInvoicesCount} open invoice{unpaidInvoicesCount !== 1 ? 's' : ''} ({sales.length} total)
               </div>
             </div>
           </div>
