@@ -35,6 +35,7 @@ export const BankingView: React.FC = () => {
     deleteBankDeposit,
     payments,
     expenses,
+    financialMetrics,
   } = useFarm();
 
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
@@ -60,16 +61,10 @@ export const BankingView: React.FC = () => {
   const [depositedBy, setDepositedBy] = useState('');
   const [depositNotes, setDepositNotes] = useState('');
 
-  // Computed Financial Totals using Accounting Formula
-  const totalPaymentsReceived = payments.reduce((s, p) => s + (parseFloat(String(p.amount)) || 0), 0);
-  const totalFarmExpenses = expenses.reduce((s, e) => s + (parseFloat(String(e.amount)) || 0), 0);
-  const totalCompletedBankDeposits = bankDeposits.length === 0
-    ? 0
-    : bankDeposits.reduce((s, d) => s + (parseFloat(String(d.amount)) || 0), 0);
-
-  const dynamicCashOnHand = totalPaymentsReceived - totalFarmExpenses - totalCompletedBankDeposits;
+  // INSTRUCTION 2: PATCH BANK & DEPOSITS SUMMARY VIEW
+  const exactMasterCashOnHand = financialMetrics ? financialMetrics.totalCashBankRemitted : cashOnHand;
   const totalBankBalance = bankAccounts.reduce((s, b) => s + b.currentBalance, 0);
-  const totalFarmLiquidity = dynamicCashOnHand + totalBankBalance;
+  const totalFarmLiquidity = exactMasterCashOnHand + totalBankBalance;
 
   const handleAddAccount = (e: React.FormEvent) => {
     e.preventDefault();
@@ -217,8 +212,8 @@ export const BankingView: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
           <div className="text-xs text-slate-500 font-medium">Physical Cash on Hand (Safe)</div>
-          <div className={`text-2xl font-bold font-heading mt-1 ${dynamicCashOnHand < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
-            {formatCurrency(dynamicCashOnHand)}
+          <div className={`text-2xl font-bold font-heading mt-1 ${exactMasterCashOnHand < 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+            {formatCurrency(exactMasterCashOnHand)}
           </div>
           <div className="text-[11px] text-slate-400 mt-0.5">Ready for bank deposit transfer</div>
         </div>
@@ -615,3 +610,5 @@ export const BankingView: React.FC = () => {
     </div>
   );
 };
+
+export default BankingView;

@@ -58,6 +58,7 @@ export const SalesOrdersView: React.FC<SalesOrdersViewProps> = ({ initialTab = '
     eggStockSummary,
     bankAccounts,
     profile,
+    financialMetrics,
     currentRole,
     hasPermission,
   } = useFarm();
@@ -480,9 +481,9 @@ export const SalesOrdersView: React.FC<SalesOrdersViewProps> = ({ initialTab = '
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
           <div className="text-xs text-slate-500 font-medium">Total Cash/Bank Remitted</div>
           <div className="text-2xl font-bold text-emerald-700 font-heading mt-1">
-            {formatCurrency(totalRemittedClean)}
+            {formatCurrency(financialMetrics.totalCashBankRemitted)}
           </div>
-          <div className="text-[11px] text-slate-400 mt-0.5">{payments.length} payment transactions</div>
+          <div className="text-[11px] text-slate-400 mt-0.5">{financialMetrics.paidTransactions} payment transactions</div>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">

@@ -48,6 +48,7 @@ export const AuditCenterView: React.FC<AuditCenterViewProps> = ({ onNavigate }) 
     }>
   >([]);
   const [scanLogs, setScanLogs] = useState<string[]>([]);
+  const [scanExecuted, setScanExecuted] = useState<boolean>(false);
 
   // INSTRUCTION 2: INTERACTIVE ENGINE SCAN LOGIC
   const triggerFullRecordScan = () => {
@@ -91,6 +92,7 @@ export const AuditCenterView: React.FC<AuditCenterViewProps> = ({ onNavigate }) 
           setReport(newReport);
           setDiscrepancyList(foundErrors);
           setIsScanning(false);
+          setScanExecuted(true);
           return 100;
         }
 
@@ -170,56 +172,75 @@ export const AuditCenterView: React.FC<AuditCenterViewProps> = ({ onNavigate }) 
         </div>
       )}
 
-      {/* INSTRUCTION 3: GENITIONAL DISCREPANCY REPAIR HUB */}
-      {!isScanning && discrepancyList.length > 0 && (
-        <div className="p-5 border border-rose-200 rounded-xl bg-rose-50/80 space-y-3 shadow-xs">
-          <div className="flex items-center justify-between">
-            <h3 className="text-rose-900 font-bold font-heading text-sm flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-              <span>🚨 System Discrepancies Detected ({discrepancyList.length})</span>
+      {/* INSTRUCTION 3: GENERIC CONDITIONAL RENDER FOR DISCREPANCY REPAIR HUB */}
+      {scanExecuted && !isScanning && (
+        <div className="p-5 border border-slate-200 rounded-2xl bg-white shadow-xs space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h3 className="text-slate-900 font-bold font-heading text-sm flex items-center gap-2">
+              {discrepancyList.length === 0 ? (
+                <>
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                  <span>✅ Ledger Integrity Operational</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                  <span>🚨 Anomalies Detected for Remediation</span>
+                </>
+              )}
             </h3>
-            <span className="text-xs text-rose-700 font-semibold bg-rose-100 px-2.5 py-0.5 rounded border border-rose-200">
-              Immediate Attention Recommended
+            <span className={`px-3 py-1 rounded-full text-xs font-bold ${discrepancyList.length === 0 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'}`}>
+              {discrepancyList.length} Action Items Found
             </span>
           </div>
 
-          <div className="overflow-x-auto bg-white rounded-lg border border-rose-200">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-rose-100/60 text-rose-950 font-semibold border-b border-rose-200">
-                <tr>
-                  <th className="p-2.5">Module</th>
-                  <th className="p-2.5">Description</th>
-                  <th className="p-2.5 text-center">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-rose-100 font-medium">
-                {discrepancyList.map(err => (
-                  <tr key={err.id} className="hover:bg-rose-50/50">
-                    <td className="p-2.5 font-bold text-rose-700">{err.module}</td>
-                    <td className="p-2.5 text-slate-800">{err.description}</td>
-                    <td className="p-2.5 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button
-                          onClick={() => handleFixLinkInvoice(err.id)}
-                          className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1"
-                        >
-                          <Wrench className="w-3 h-3" />
-                          <span>Fix / Link Invoice</span>
-                        </button>
-                        <button
-                          onClick={() => handleVoidRecord(err.id)}
-                          className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Void Record</span>
-                        </button>
-                      </div>
-                    </td>
+          {discrepancyList.length > 0 ? (
+            <div className="overflow-x-auto bg-white rounded-lg border border-rose-200">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead className="bg-rose-100/60 border-b border-rose-200 text-rose-950 uppercase text-[11px] font-bold tracking-wider">
+                  <tr>
+                    <th className="p-3">Module Layer</th>
+                    <th className="p-3">Issue Fault Description</th>
+                    <th className="p-3 text-center">Diagnostic Repair Utilities</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-rose-100 font-medium">
+                  {discrepancyList.map((issue) => (
+                    <tr key={issue.id} className="border-b border-slate-100 hover:bg-rose-50/50 transition-colors">
+                      <td className="p-3 font-bold text-rose-700">{issue.module}</td>
+                      <td className="p-3 text-slate-800">{issue.description}</td>
+                      <td className="p-3 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => handleFixLinkInvoice(issue.id)}
+                            className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1"
+                          >
+                            <Wrench className="w-3 h-3" />
+                            <span>Fix / Link Invoice</span>
+                          </button>
+                          <button
+                            onClick={() => handleVoidRecord(issue.id)}
+                            className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold cursor-pointer shadow-2xs flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Void Record</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="p-6 text-center text-emerald-800 text-xs font-medium bg-emerald-50/80 rounded-xl border border-emerald-200 space-y-1">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+              <p className="font-bold text-sm text-emerald-900">General Ledger Verified & Operational</p>
+              <p className="text-slate-600">
+                No orphaned or unlinked database rows detected. General ledger matches system state variables perfectly.
+              </p>
+            </div>
+          )}
         </div>
       )}
 

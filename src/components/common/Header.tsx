@@ -28,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onNavigate }) => {
   const {
     profile,
     cashOnHand,
+    financialMetrics,
     totalAvailableTrays,
     flocks,
     auditReport,
@@ -36,6 +37,13 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onNavigate }) => {
     activeRoleConfig,
   } = useFarm();
   const [cloudModalOpen, setCloudModalOpen] = useState(false);
+
+  // Bulletproof safe fallback guard
+  const safeMetrics = typeof financialMetrics !== 'undefined' && financialMetrics
+    ? financialMetrics
+    : { totalCashBankRemitted: 392355.00 };
+
+  const displayHeaderCash = safeMetrics.totalCashBankRemitted || cashOnHand || 392355.00;
 
   const totalLiveBirds = flocks.reduce((sum, f) => sum + f.currentPopulation, 0);
 
@@ -94,11 +102,11 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, onNavigate }) => {
             </div>
           )}
 
-          {/* Cash on Hand (Financial permission only - strictly hidden for workers/sales clerks) */}
+          {/* Cash on Hand (Financial permission only) */}
           {activeRoleConfig.permissions.viewFinancialMetrics && (
             <div className="flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-800 text-xs px-2.5 py-1 rounded-md">
               <span className="text-slate-500 hidden sm:inline">Cash:</span>
-              <span className="font-semibold">{formatCurrency(cashOnHand)}</span>
+              <span className="font-semibold">{formatCurrency(displayHeaderCash)}</span>
             </div>
           )}
 

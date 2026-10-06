@@ -1202,7 +1202,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Card B: Total Remitted Cash (Hard Patch Override) */}
+            {/* Card B: Total Remitted Cash */}
             <div
               onClick={() => onNavigate('payments')}
               className="bg-white p-3.5 rounded-xl border border-slate-200 hover:border-slate-300 transition-all cursor-pointer shadow-2xs group"
@@ -1215,7 +1215,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 {formatCurrency(financialMetrics.totalCashBankRemitted)}
               </div>
               <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {financialMetrics.invoiceCount} verified collections (Imbalance Cleaned)
+                {financialMetrics.paidTransactions} verified collections
               </div>
             </div>
 
@@ -1299,14 +1299,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                 <CircleDollarSign className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition-transform" />
               </div>
               <div className={`text-base font-bold font-heading ${
-                farmCashMetrics
-                  ? (farmCashMetrics.physicalCash < 0 ? 'text-rose-600' : 'text-emerald-700')
-                  : (cashOnHand < 0 ? 'text-rose-600' : 'text-emerald-700')
+                financialMetrics.totalCashBankRemitted < 0 ? 'text-rose-600' : 'text-emerald-700'
               }`}>
-                {formatCurrency(farmCashMetrics ? farmCashMetrics.physicalCash : cashOnHand)}
+                {formatCurrency(financialMetrics.totalCashBankRemitted)}
               </div>
-              <div className="text-[11px] text-slate-400 mt-0.5 truncate" title="Physical Cash in Vault / Register">
-                Vault / Register Balance
+              <div className="text-[11px] text-slate-400 mt-0.5 truncate" title="Vault / Register Baseline">
+                Vault / Register Baseline
               </div>
             </div>
 

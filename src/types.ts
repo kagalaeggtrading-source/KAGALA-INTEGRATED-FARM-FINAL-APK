@@ -565,4 +565,6 @@ export interface FinancialMetricsSummary {
   actualCollectionPaid: number;
   excessDiscrepancy: number;
   invoiceCount: number;
+  paymentTransactionCount: number;
+  paidTransactions: number;
 }
