@@ -1410,7 +1410,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       orderNumber,
       createdAt: new Date().toISOString(),
     };
-    setOrders(prev => [newOrder, ...prev]);
+    setOrders(prev => {
+      const updated = [newOrder, ...prev];
+      setTimeout(() => saveStorage('orders', updated), 0);
+      return updated;
+    });
     syncSaveDoc('orders', newOrder.id, newOrder);
     logActivity('CREATED', 'Order Management', `Created order ${newOrder.orderNumber} for ${newOrder.customerName}: ₱${newOrder.total.toLocaleString()}`);
     return newOrder;
@@ -1452,7 +1456,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       createdAt: new Date().toISOString(),
     };
 
-    setSales(prev => [newSale, ...prev]);
+    setSales(prev => {
+      const updated = [newSale, ...prev];
+      setTimeout(() => saveStorage('sales', updated), 0);
+      return updated;
+    });
     syncSaveDoc('sales', newSale.id, newSale);
 
     logActivity('CREATED', 'Sales & Invoicing', `Issued sales invoice ${newSale.saleNumber} for ${newSale.customerName}: ₱${newSale.total.toLocaleString()}`);
@@ -1472,7 +1480,11 @@ export const FarmProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         accountReceivedInto: saleData.paymentMethod === 'Bank Transfer' ? 'bank_account' : 'cash_on_hand',
         createdAt: new Date().toISOString(),
       };
-      setPayments(prev => [newPayment, ...prev]);
+      setPayments(prev => {
+        const updated = [newPayment, ...prev];
+        setTimeout(() => saveStorage('payments', updated), 0);
+        return updated;
+      });
       syncSaveDoc('payments', newPayment.id, newPayment);
     }
 

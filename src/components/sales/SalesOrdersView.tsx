@@ -438,6 +438,7 @@ export const SalesOrdersView: React.FC<SalesOrdersViewProps> = ({ initialTab = '
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
+              console.log("Button '+ New Order' clicked! Triggering order modal state machine...");
               if (customers.length === 0) {
                 alert('Please register at least one customer first.');
                 return;
@@ -453,6 +454,7 @@ export const SalesOrdersView: React.FC<SalesOrdersViewProps> = ({ initialTab = '
 
           <button
             onClick={() => {
+              console.log("Button 'Direct Sale / Invoice' clicked! Triggering invoice modal state machine...");
               if (customers.length === 0) {
                 alert('Please register at least one customer first.');
                 return;
@@ -1134,6 +1136,381 @@ export const SalesOrdersView: React.FC<SalesOrdersViewProps> = ({ initialTab = '
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs cursor-pointer"
                 >
                   Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* FORCE RENDER LAYER: NEW ORDER FORM MODAL */}
+      {showCreateOrderModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-emerald-700" />
+                <h3 className="font-heading font-bold text-base text-slate-900">
+                  📦 Record New Customer Advance Order
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowCreateOrderModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateOrder} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Select Customer *</label>
+                  <select
+                    value={orderCustomerId}
+                    onChange={e => setOrderCustomerId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600 font-semibold"
+                  >
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.customerType})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Fulfillment Type</label>
+                  <select
+                    value={fulfillmentType}
+                    onChange={e => setFulfillmentType(e.target.value as any)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold"
+                  >
+                    <option value="Pickup">Pickup at Farm</option>
+                    <option value="Delivery">Farm Delivery</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Order Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={orderDate}
+                    onChange={e => setOrderDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Delivery / Pickup Target Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={deliveryDate}
+                    onChange={e => setDeliveryDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Order Items Table */}
+              <div className="space-y-2 border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900">Order Egg Items (Trays)</span>
+                  <button
+                    type="button"
+                    onClick={handleAddOrderItem}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1 rounded transition-colors cursor-pointer"
+                  >
+                    + Add Egg Item
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {orderItems.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-white p-2 rounded-lg border border-slate-200">
+                      <div className="col-span-4">
+                        <select
+                          value={item.grade}
+                          onChange={e => handleUpdateOrderItem(idx, { grade: e.target.value as any })}
+                          className="w-full px-2 py-1 border border-slate-300 rounded font-semibold capitalize"
+                        >
+                          <option value="jumbo">Jumbo Grade</option>
+                          <option value="xl">XL Grade</option>
+                          <option value="large">Large Grade</option>
+                          <option value="medium">Medium Grade</option>
+                          <option value="small">Small Grade</option>
+                          <option value="peewee">Peewee Grade</option>
+                        </select>
+                      </div>
+
+                      <div className="col-span-3">
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="any"
+                          value={item.quantityTrays}
+                          onChange={e => handleUpdateOrderItem(idx, { quantityTrays: parseFloat(e.target.value) || 0 })}
+                          placeholder="Trays"
+                          className="w-full px-2 py-1 border border-slate-300 rounded text-right font-mono font-bold"
+                        />
+                      </div>
+
+                      <div className="col-span-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={item.unitPrice}
+                          onChange={e => handleUpdateOrderItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })}
+                          placeholder="Price/Tray"
+                          className="w-full px-2 py-1 border border-slate-300 rounded text-right font-mono"
+                        />
+                      </div>
+
+                      <div className="col-span-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveOrderItem(idx)}
+                          className="text-slate-400 hover:text-rose-600 cursor-pointer p-1"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Delivery Fee (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={orderDeliveryFee}
+                    onChange={e => setOrderDeliveryFee(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Discount (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={orderDiscount}
+                    onChange={e => setOrderDiscount(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between">
+                <span className="font-bold text-slate-300">Total Advance Order Value:</span>
+                <span className="text-base font-bold font-mono text-emerald-400">
+                  {formatCurrency(orderTotal)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateOrderModal(false)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg font-semibold shadow-xs cursor-pointer"
+                >
+                  Save Advance Order
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* FORCE RENDER LAYER: DIRECT SALE INVOICE FORM MODAL */}
+      {showCreateSaleModal && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-emerald-700" />
+                <h3 className="font-heading font-bold text-base text-slate-900">
+                  🧾 Create Direct Farm Sales Invoice
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowCreateSaleModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateSale} className="space-y-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Select Customer *</label>
+                  <select
+                    value={saleCustomerId}
+                    onChange={e => setSaleCustomerId(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-emerald-600 font-semibold"
+                  >
+                    {customers.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.customerType})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Invoice Date *</label>
+                  <input
+                    type="date"
+                    required
+                    value={saleDate}
+                    onChange={e => setSaleDate(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Sale Items Table */}
+              <div className="space-y-2 border border-slate-200 rounded-xl p-3 bg-slate-50/50">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-900">Invoice Items (Trays)</span>
+                  <button
+                    type="button"
+                    onClick={handleAddSaleItem}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-2.5 py-1 rounded transition-colors cursor-pointer"
+                  >
+                    + Add Item
+                  </button>
+                </div>
+
+                <div className="space-y-2">
+                  {saleItems.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-white p-2 rounded-lg border border-slate-200">
+                      <div className="col-span-4">
+                        <select
+                          value={item.grade}
+                          onChange={e => handleUpdateSaleItem(idx, { grade: e.target.value as any })}
+                          className="w-full px-2 py-1 border border-slate-300 rounded font-semibold capitalize"
+                        >
+                          <option value="jumbo">Jumbo Grade</option>
+                          <option value="xl">XL Grade</option>
+                          <option value="large">Large Grade</option>
+                          <option value="medium">Medium Grade</option>
+                          <option value="small">Small Grade</option>
+                          <option value="peewee">Peewee Grade</option>
+                        </select>
+                      </div>
+
+                      <div className="col-span-3">
+                        <input
+                          type="number"
+                          min="0.1"
+                          step="any"
+                          value={item.quantityTrays}
+                          onChange={e => handleUpdateSaleItem(idx, { quantityTrays: parseFloat(e.target.value) || 0 })}
+                          placeholder="Trays"
+                          className="w-full px-2 py-1 border border-slate-300 rounded text-right font-mono font-bold"
+                        />
+                      </div>
+
+                      <div className="col-span-3">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          value={item.unitPrice}
+                          onChange={e => handleUpdateSaleItem(idx, { unitPrice: parseFloat(e.target.value) || 0 })}
+                          placeholder="Price/Tray"
+                          className="w-full px-2 py-1 border border-slate-300 rounded text-right font-mono"
+                        />
+                      </div>
+
+                      <div className="col-span-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSaleItem(idx)}
+                          className="text-slate-400 hover:text-rose-600 cursor-pointer p-1"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Delivery Fee (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={saleDeliveryFee}
+                    onChange={e => setSaleDeliveryFee(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Discount (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={saleDiscount}
+                    onChange={e => setSaleDiscount(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Amount Paid (₱)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={salePaidAmount}
+                    onChange={e => setSalePaidAmount(parseFloat(e.target.value) || 0)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg font-mono font-bold text-emerald-800"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between">
+                <span className="font-bold text-slate-300">Total Invoice Amount:</span>
+                <span className="text-base font-bold font-mono text-emerald-400">
+                  {formatCurrency(saleTotal)}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateSaleModal(false)}
+                  className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold shadow-xs cursor-pointer"
+                >
+                  Generate Invoice & Deduct Eggs
                 </button>
               </div>
             </form>
